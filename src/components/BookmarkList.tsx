@@ -68,17 +68,17 @@ function BookmarkListInner({
         : 'Add a bookmark to start building your library.';
 
     return (
-      <div className="h-full flex flex-col items-center justify-center text-zinc-500">
-        <div className="w-12 h-12 bg-white border border-zinc-200 shadow-sm rounded-xl flex items-center justify-center mb-4 text-zinc-400">
-          <LayoutGrid className="w-5 h-5" />
+      <div className="h-full flex flex-col items-center justify-center text-center px-6">
+        <div className="w-14 h-14 bg-white border border-zinc-200 shadow-sm rounded-2xl flex items-center justify-center mb-4 text-zinc-300">
+          <LayoutGrid className="w-6 h-6" />
         </div>
-        <p className="text-sm font-medium text-zinc-700">{title}</p>
-        <p className="text-xs text-zinc-500 mt-1">{description}</p>
-        <div className="mt-4 flex items-center gap-2">
+        <p className="text-sm font-semibold text-zinc-600">{title}</p>
+        <p className="text-xs text-zinc-400 mt-1.5 max-w-[280px]">{description}</p>
+        <div className="mt-5 flex items-center gap-2">
           {hasSearch && onClearSearch && (
             <button
               onClick={onClearSearch}
-              className="px-3 h-8 rounded-md text-[13px] font-medium text-zinc-700 bg-white border border-zinc-200 shadow-sm hover:bg-zinc-50 transition-colors"
+              className="px-3 h-8 rounded-md text-[13px] font-medium text-zinc-600 bg-white border border-zinc-200 shadow-sm hover:bg-zinc-50 transition-colors"
             >
               Clear search
             </button>
@@ -86,7 +86,7 @@ function BookmarkListInner({
           {(hasTags || (hasSearch && activeTags.length > 0)) && onClearFilters && (
             <button
               onClick={onClearFilters}
-              className="px-3 h-8 rounded-md text-[13px] font-medium text-zinc-700 bg-white border border-zinc-200 shadow-sm hover:bg-zinc-50 transition-colors"
+              className="px-3 h-8 rounded-md text-[13px] font-medium text-zinc-600 bg-white border border-zinc-200 shadow-sm hover:bg-zinc-50 transition-colors"
             >
               Clear filters
             </button>
@@ -104,18 +104,10 @@ function BookmarkListInner({
     );
   }
 
-  const colClass = {
-    1: 'grid-cols-1',
-    2: 'grid-cols-2',
-    3: 'grid-cols-3',
-    4: 'grid-cols-4',
-    5: 'grid-cols-5',
-  }[bookmarkColumns];
-
   if (viewMode === 'list') {
     return (
       <div className="h-full overflow-y-auto custom-scrollbar">
-        <div className={`p-5 grid ${colClass} gap-2 ${isDashboard ? 'w-full' : 'max-w-5xl mx-auto'}`} style={{ contain: 'layout' }}>
+        <div className={`flex flex-col ${isDashboard ? 'w-full' : 'max-w-5xl mx-auto'}`}>
           {bookmarks.map((bookmark) => (
             <BookmarkCard
               key={bookmark.id}
@@ -153,9 +145,14 @@ function BookmarkListInner({
     <div className="h-full w-full overflow-y-auto custom-scrollbar">
       <div className={
         viewMode === 'grid'
-          ? "p-5 grid grid-cols-2 lg:grid-cols-6 gap-4"
-          : "p-5 grid grid-cols-8 lg:grid-cols-[repeat(20,minmax(0,1fr))] gap-3 mx-auto"
-      } style={{ contain: 'layout' }}>
+          ? "p-5 grid gap-4"
+          : "p-5 grid gap-3 mx-auto"
+      } style={{
+        contain: 'layout',
+        gridTemplateColumns: viewMode === 'grid'
+          ? `repeat(auto-fill, minmax(${Math.max(200, 320 - (bookmarkColumns - 1) * 40)}px, 1fr))`
+          : `repeat(auto-fill, minmax(100px, 1fr))`
+      }}>
         {bookmarks.map((bookmark) => (
           <BookmarkCard
             key={bookmark.id}

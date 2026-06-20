@@ -119,10 +119,10 @@ function FolderViewInner({
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar">
-      <div className={`p-6 space-y-8 ${isDashboard ? 'w-full' : 'max-w-7xl mx-auto'}`}>
+      <div className={`p-5 space-y-6 ${isDashboard ? 'w-full' : 'max-w-7xl mx-auto'}`}>
         {/* Folders Grid */}
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900 mb-4">Collections</h2>
+          <h2 className="text-base font-bold text-zinc-900 mb-4">Collections</h2>
           <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${collectionColumns}, minmax(0, 1fr))` }}>
             {allFolders.map((folder) => {
               const Icon = folder.icon;
@@ -130,15 +130,15 @@ function FolderViewInner({
               return (
                 <div
                   key={folder.id}
-                  className="bg-white border border-zinc-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                  className="bg-white border border-zinc-200/80 rounded-xl p-5 hover:shadow-md hover:border-zinc-300 transition-all duration-200"
                 >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colorClasses} border`}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colorClasses} border`}>
                       <Icon className="w-5 h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-sm font-semibold text-zinc-900 truncate">{folder.label}</h3>
-                      <p className="text-xs text-zinc-500">{folder.bookmarks.length} bookmark{folder.bookmarks.length !== 1 ? 's' : ''}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">{folder.bookmarks.length} bookmark{folder.bookmarks.length !== 1 ? 's' : ''}</p>
                     </div>
                   </div>
 
@@ -185,9 +185,9 @@ function FolderViewInner({
             {/* New Collection Card */}
             <button
               onClick={onNewCollection}
-              className="bg-white border-2 border-dashed border-zinc-300 rounded-xl p-4 flex flex-col items-center justify-center gap-2 hover:border-zinc-400 hover:bg-zinc-50 transition-colors min-h-[120px]"
+              className="bg-white border-2 border-dashed border-zinc-300 rounded-xl p-5 flex flex-col items-center justify-center gap-3 hover:border-zinc-400 hover:bg-zinc-50 transition-all duration-200 min-h-[120px]"
             >
-              <div className="w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-zinc-100 flex items-center justify-center">
                 <Plus className="w-5 h-5 text-zinc-400" />
               </div>
               <span className="text-sm font-medium text-zinc-500">New Collection</span>
@@ -199,10 +199,10 @@ function FolderViewInner({
         {trashBookmarks.length > 0 && (
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center">
                 <Trash2 className="w-4 h-4 text-rose-600" />
               </div>
-              <h3 className="text-lg font-semibold text-zinc-900">Trash</h3>
+              <h3 className="text-base font-bold text-zinc-900">Trash</h3>
               <span className="text-xs text-zinc-500">({trashBookmarks.length} bookmark{trashBookmarks.length !== 1 ? 's' : ''})</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

@@ -3,18 +3,18 @@
 
 export function SidebarSkeleton() {
   return (
-    <div className="w-52 bg-white border-r border-zinc-200 flex flex-col h-full shrink-0 animate-pulse">
-      <div className="p-4 border-b border-zinc-100 flex items-center gap-2">
+    <div className="w-52 bg-zinc-50 border-r border-zinc-200/80 flex flex-col h-full shrink-0 animate-pulse">
+      <div className="px-4 pt-4 pb-3 flex items-center gap-2">
         <div className="w-6 h-6 rounded-md bg-zinc-200" />
         <div className="h-3 w-20 rounded bg-zinc-200" />
       </div>
-      <div className="p-3 space-y-2">
+      <div className="px-3 py-4 space-y-2">
         {[...Array(3)].map((_, i) => (
-          <div key={`core-${i}`} className="h-[34px] rounded-md bg-zinc-100" />
+          <div key={`core-${i}`} className="h-[34px] rounded-lg bg-zinc-200/70" />
         ))}
-        <div className="h-3 w-16 rounded bg-zinc-200 mt-6" />
+        <div className="h-3 w-16 rounded bg-zinc-200 mt-4" />
         {[...Array(4)].map((_, i) => (
-          <div key={`coll-${i}`} className="h-[34px] rounded-md bg-zinc-100" />
+          <div key={`coll-${i}`} className="h-[34px] rounded-lg bg-zinc-200/70" />
         ))}
       </div>
     </div>
@@ -23,13 +23,13 @@ export function SidebarSkeleton() {
 
 export function SearchBarSkeleton() {
   return (
-    <div className="flex items-center justify-between py-3 px-5 border-b border-zinc-200 bg-white shrink-0 animate-pulse">
-      <div className="flex-1 max-w-md">
-        <div className="h-8 rounded-md bg-zinc-100" />
+    <div className="flex items-center justify-between gap-2 py-3 px-5 border-b border-zinc-200/80 bg-white shrink-0 animate-pulse">
+      <div className="flex-1 min-w-0">
+        <div className="h-8 rounded-md bg-zinc-100 max-w-md" />
       </div>
-      <div className="flex items-center gap-3 ml-4">
-        <div className="h-8 w-20 rounded-md bg-zinc-100" />
-        <div className="h-8 w-24 rounded-md bg-zinc-100" />
+      <div className="flex items-center gap-2">
+        <div className="h-7 w-20 rounded-md bg-zinc-100" />
+        <div className="h-7 w-24 rounded-md bg-zinc-100" />
         <div className="h-8 w-16 rounded-md bg-zinc-200" />
       </div>
     </div>
@@ -42,7 +42,7 @@ interface BookmarkListSkeletonProps {
 
 export function BookmarkListSkeleton({ count = 6 }: BookmarkListSkeletonProps) {
   return (
-    <div className="p-5 grid grid-cols-2 lg:grid-cols-6 gap-4 animate-pulse">
+    <div className="p-5 grid gap-4 animate-pulse" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
       {[...Array(count)].map((_, i) => (
         <div key={i} className="bg-white border border-zinc-200 rounded-lg shadow-sm overflow-hidden min-h-[140px] flex flex-col">
           <div className="w-full h-32 bg-zinc-100" />

@@ -497,9 +497,9 @@ function App() {
 
   if (!isLoaded) {
     return (
-      <div className={`flex bg-[#fafafa] text-zinc-900 overflow-hidden font-sans ${isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'}`}>
+      <div className={`flex bg-zinc-100 text-zinc-900 overflow-hidden font-sans ${isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'}`}>
         <SidebarSkeleton />
-        <main className="flex-1 flex flex-col min-w-0 bg-[#fafafa]">
+        <main className="flex-1 flex flex-col min-w-0 bg-white">
           <SearchBarSkeleton />
           <div className="flex-1 overflow-hidden">
             <BookmarkListSkeleton count={6} />
@@ -510,7 +510,7 @@ function App() {
   }
 
   return (
-    <div className={`flex bg-[#fafafa] text-zinc-900 overflow-hidden font-sans ${isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'}`}>
+    <div className={`flex bg-zinc-100 text-zinc-900 overflow-hidden font-sans ${isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'}`}>
       <Sidebar
         collections={state.collections}
         activeCollection={activeCollection}
@@ -531,7 +531,7 @@ function App() {
         onDropCollection={handleDropCollection}
       />
 
-      <main className="flex-1 flex flex-col min-w-0 bg-[#fafafa]">
+      <main className="flex-1 flex flex-col min-w-0 bg-white">
         <SearchBar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -561,7 +561,7 @@ function App() {
             setActiveTags([]);
           }}
         />
-        <div className={`flex-1 overflow-hidden relative ${isPending ? 'opacity-60' : 'opacity-100'} transition-opacity duration-150`}>
+        <div className={`flex-1 overflow-hidden relative transition-opacity duration-150 ${isPending ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
           {viewMode === 'folder' && activeCollection === COLLECTION.ALL ? (
             <FolderView
               collections={state.collections}
