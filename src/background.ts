@@ -3,9 +3,8 @@ import {
   saveCollections,
   getInitialState,
 } from './storage';
-import { COLLECTION, type AppState, type AppSettings, type Bookmark, type Collection } from './types';
+import { COLLECTION, type AppState, type Bookmark, type Collection } from './types';
 import { canFetchPreview, generateId, getDomain, getFavicon, isSafeBookmarkUrl, sanitizeBookmarkUrl } from './utils';
-import { getAiSummary } from './ai';
 
 // ─── In-Memory State Cache ──────────────────────────────────────────────────
 // Background script is a single service worker; caching eliminates redundant
@@ -32,11 +31,6 @@ async function persistBookmarks(bookmarks: Bookmark[]) {
 async function persistCollections(collections: Collection[]) {
   if (stateCache) stateCache.collections = collections;
   await saveCollections(collections);
-}
-
-async function persistSettings(settings: AppSettings) {
-  if (stateCache) stateCache.settings = settings;
-  await chrome.storage.local.set({ settings });
 }
 
 // ─── Cached CRUD helpers ────────────────────────────────────────────────────
@@ -116,13 +110,6 @@ async function cachedDeleteCollection(id: string): Promise<[Collection[], Bookma
   state.collections = nextCollections;
   state.bookmarks = nextBookmarks;
   return [nextCollections, nextBookmarks];
-}
-
-async function cachedUpdateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
-  const state = await ensureCache();
-  const next = { ...(state.settings || { enableAi: false }), ...patch };
-  await persistSettings(next);
-  return next;
 }
 
 // ─── Link Preview ───────────────────────────────────────────────────────────
@@ -217,11 +204,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const url = sanitizeBookmarkUrl(rawUrl);
   if (!url) return;
 
-  let title = info.linkUrl ? getDomain(info.linkUrl) : (tab?.title ?? '');
+  const title = info.linkUrl ? getDomain(info.linkUrl) : (tab?.title ?? '');
   const favicon = getFavicon(url);
 
   const coverUrl = await fetchLinkPreview(url);
-  const autoTags: string[] = [];
 
   const state = await ensureCache();
   const existing = state.bookmarks.find(b => b.url === url);
@@ -229,7 +215,6 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (existing) {
     const updated: Bookmark = {
       ...existing,
-      tags: Array.from(new Set([...existing.tags, ...autoTags])),
       updatedAt: Date.now(),
       coverUrl: existing.coverUrl || coverUrl,
     };
@@ -237,33 +222,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
-  let aiCollectionId: string | null = null;
-  if (state.settings?.enableAi && url) {
-    const aiResult = await getAiSummary({
-      title: tab?.title || title,
-      url,
-      collections: state.collections.map(c => ({ id: c.id, name: c.name }))
-    });
-    if (aiResult) {
-      if (aiResult.collectionId) {
-        const isValid = state.collections.some(c => c.id === aiResult.collectionId);
-        if (isValid) aiCollectionId = aiResult.collectionId;
-      }
-      const lowerTags = aiResult.tags.map((t: string) => t.toLowerCase());
-      autoTags.push(...lowerTags);
-      if (aiResult.title) {
-        title = aiResult.title;
-      }
-    }
-  }
-
   const bookmark: Bookmark = {
     id: generateId(),
     url,
     title,
     favicon,
-    tags: Array.from(new Set(autoTags)),
-    collectionId: aiCollectionId || COLLECTION.UNSORTED,
+    tags: [],
+    collectionId: COLLECTION.UNSORTED,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     pinned: false,
@@ -280,12 +245,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       switch (message.type) {
         case 'BM:getState': {
-          sendResponse(await getState());
-          break;
-        }
-
-        case 'BM:updateSettings': {
-          await cachedUpdateSettings(message.payload);
           sendResponse(await getState());
           break;
         }
@@ -504,23 +463,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             title: tab?.title ?? '',
             favicon: tab?.favIconUrl ?? (tab?.url ? getFavicon(tab.url) : ''),
           });
-          break;
-        }
-
-        case 'BM:generateAISummary': {
-          const payload = message.payload as { title?: string; url?: string } | undefined;
-          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          const url = sanitizeBookmarkUrl(payload?.url || tab?.url || '');
-          const title = payload?.title || tab?.title || '';
-          if (url) {
-            const aiResult = await getAiSummary({ title, url });
-            if (aiResult && aiResult.tags) {
-              aiResult.tags = aiResult.tags.map((t: string) => t.toLowerCase());
-            }
-            sendResponse({ success: true, aiResult });
-            break;
-          }
-          sendResponse({ success: false, error: 'Enter a valid URL before using AI' });
           break;
         }
 

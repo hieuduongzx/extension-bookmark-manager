@@ -70,18 +70,11 @@ export type Message =
   | { type: 'BM:importData'; payload: { bookmarks: Bookmark[]; collections: Collection[] } }
   | { type: 'BM:getCurrentTab' }
   | { type: 'BM:refreshPreviews' }
-  | { type: 'BM:saveBookmarks'; payload: Bookmark[] }
-  | { type: 'BM:updateSettings'; payload: Partial<AppSettings> }
-  | { type: 'BM:generateAISummary'; payload?: { title?: string; url?: string } };
-
-export interface AppSettings {
-  enableAi: boolean;
-}
+  | { type: 'BM:saveBookmarks'; payload: Bookmark[] };
 
 export interface AppState {
   bookmarks: Bookmark[];
   collections: Collection[];
-  settings?: AppSettings;
 }
 
 // ─── Smart Collection IDs ─────────────────────────────────────────────────────

@@ -24,8 +24,7 @@ import {
   Edit2,
   Pin,
   ChevronRight,
-  ChevronDown,
-  Sparkles
+  ChevronDown
 } from 'lucide-react';
 import type { Collection, CollectionIcon } from '../types';
 import { COLLECTION } from '../types';
@@ -47,8 +46,6 @@ interface SidebarProps {
   onOpenDashboard?: () => void;
   onEditCollection?: (id: string) => void;
   onTogglePinCollection?: (id: string) => void;
-  enableAi?: boolean;
-  onToggleAi?: () => void;
   onDropBookmark?: (bookmarkId: string, collectionId: string) => void;
   onDropCollection?: (draggedId: string, targetId: string | null) => void;
 }
@@ -197,10 +194,10 @@ const NavItem = memo(({
         isActive
           ? 'bg-zinc-100 text-zinc-900 font-medium'
           : 'text-zinc-600 hover:bg-zinc-100/80 hover:text-zinc-900'
-      } ${isDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50' : ''}`}
+      } ${isDragOver ? 'ring-2 ring-brand-400 ring-inset bg-brand-50' : ''}`}
     >
       {isActive && (
-        <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r-full bg-blue-500" aria-hidden="true" />
+        <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r-full bg-brand-500" aria-hidden="true" />
       )}
       <div className="flex items-center gap-1.5 min-w-0 pointer-events-none">
         {isCustom && (
@@ -233,7 +230,7 @@ const NavItem = memo(({
                 onTogglePinCollection?.(id);
               }}
               className={`p-1 rounded transition-colors ${
-                isPinned ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' : 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200'
+                isPinned ? 'text-brand-600 hover:text-brand-700 hover:bg-brand-50' : 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200'
               }`}
               title={isPinned ? 'Unpin Collection' : 'Pin Collection'}
             >
@@ -253,7 +250,7 @@ const NavItem = memo(({
         )}
         <div className={`col-start-1 row-start-1 flex items-center gap-1 transition-all duration-200 ${isCustom ? 'group-hover:opacity-0 group-hover:-translate-y-0.5' : ''}`}>
           {isCustom && isPinned && (
-            <Pin className="w-3 h-3 fill-current text-blue-500" />
+            <Pin className="w-3 h-3 fill-current text-brand-500" />
           )}
           <span
             className={`text-[11px] font-medium px-1.5 rounded-full transition-colors duration-150 min-w-[22px] h-[18px] inline-flex items-center justify-center tabular-nums ${
@@ -329,7 +326,7 @@ const TagsSection = memo(({
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter tags..."
                 aria-label="Filter tags"
-                className="w-full h-6 pl-2 pr-6 bg-zinc-50 border border-zinc-200 rounded text-[11px] text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-colors"
+                className="w-full h-6 pl-2 pr-6 bg-zinc-50 border border-zinc-200 rounded text-[11px] text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:border-brand-500 focus:bg-white transition-colors"
               />
               {filter && (
                 <button
@@ -348,7 +345,7 @@ const TagsSection = memo(({
               <button
                 key={`active-${tag}`}
                 onClick={() => onToggleTag(tag)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border bg-blue-50 border-blue-200 text-blue-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 group"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border bg-brand-50 border-brand-200 text-brand-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 group"
                 title="Remove tag filter"
               >
                 <Hash className="w-3 h-3 opacity-70 group-hover:hidden" />
@@ -372,7 +369,7 @@ const TagsSection = memo(({
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="self-start text-[11px] text-blue-600 hover:text-blue-700 font-medium px-1"
+              className="self-start text-[11px] text-brand-600 hover:text-brand-700 font-medium px-1"
             >
               Show {hiddenCount} more
             </button>
@@ -415,8 +412,6 @@ export function Sidebar({
   onOpenDashboard,
   onEditCollection,
   onTogglePinCollection,
-  enableAi = false,
-  onToggleAi,
   onDropBookmark,
   onDropCollection
 }: SidebarProps) {
@@ -545,22 +540,26 @@ export function Sidebar({
       style={{ width: `${width}px` }}
       className="relative bg-white border-r border-zinc-200 flex flex-col h-full z-10 shrink-0"
     >
-      <div className="p-4 border-b border-zinc-100 shrink-0 flex items-center justify-between">
+      <div className="p-4 shrink-0 flex items-center justify-between relative">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-md flex items-center justify-center shadow-sm">
-            <BookmarkIcon className="w-4 h-4 text-white" />
-          </div>
+          <img
+            src={chrome.runtime.getURL("public/icons/icon-128.png")}
+            alt="Bookmark Manager"
+            className="w-7 h-7 rounded-md shadow-glow"
+          />
           <h1 className="text-[14px] font-semibold tracking-tight text-zinc-900">Bookmarks</h1>
         </div>
         {onOpenDashboard && (
           <button
             onClick={onOpenDashboard}
-            className="p-1.5 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
+            className="btn-icon-sm"
             title="Open Full Dashboard"
           >
             <Maximize2 className="w-4 h-4" />
           </button>
         )}
+        {/* Lab Studio signature accent line — bottom edge */}
+        <div className="absolute bottom-0 left-3 right-3 accent-line" />
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-6">
@@ -666,33 +665,6 @@ export function Sidebar({
 
         {showSettings && (
           <div className="absolute bottom-full left-3 mb-2 w-64 bg-white rounded-lg shadow-xl border border-zinc-200 py-2 z-50 text-[13px] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-            {onToggleAi && (
-              <div className="px-2 pb-2 border-b border-zinc-100 mb-1">
-                <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">AI</p>
-                <label
-                  className="w-full flex items-center justify-between gap-3 px-2 py-2 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 rounded-md cursor-pointer transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                      <span className="block font-medium truncate">AI Magic</span>
-                      <span className="block text-[11px] leading-snug text-zinc-400">Auto-generate title, tags, and collection.</span>
-                    </div>
-                  </div>
-                  <div className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${enableAi ? 'bg-amber-500' : 'bg-zinc-200'}`}>
-                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow shadow-black/10 transition-transform duration-200 ease-in-out ${enableAi ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={enableAi}
-                    onChange={onToggleAi}
-                    className="sr-only"
-                  />
-                </label>
-              </div>
-            )}
-
             <div className="px-2 py-1">
               <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Import</p>
               <button
@@ -769,7 +741,7 @@ export function Sidebar({
       >
         <div
           className={`absolute top-0 right-0 h-full w-px transition-colors ${
-            isResizing ? 'bg-blue-500' : 'bg-transparent group-hover:bg-blue-400/60'
+            isResizing ? 'bg-brand-500' : 'bg-transparent group-hover:bg-brand-400/60'
           }`}
         />
       </div>

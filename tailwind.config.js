@@ -1,49 +1,50 @@
+import colors from "tailwindcss/colors";
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Space Grotesk", "Segoe UI", "sans-serif"]
+        sans: [
+          "Space Grotesk",
+          "Segoe UI",
+          "system-ui",
+          "-apple-system",
+          "sans-serif",
+        ],
       },
       colors: {
-        brand: {
-          50: 'oklch(0.97 0.01 240)',
-          100: 'oklch(0.92 0.02 240)',
-          200: 'oklch(0.84 0.05 240)',
-          500: 'oklch(0.60 0.18 240)',
-          600: 'oklch(0.53 0.18 240)',
-          700: 'oklch(0.46 0.16 240)',
-          900: 'oklch(0.24 0.07 240)',
-        },
+        // Per-extension brand palette. Swap this single line to retheme.
+        brand: colors.blue,
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(255,255,255,0.08), 0 18px 40px rgba(5, 8, 16, 0.45)"
+        card: "0 1px 2px rgba(24, 24, 27, 0.04), 0 1px 3px rgba(24, 24, 27, 0.06)",
+        pop: "0 10px 30px rgba(24, 24, 27, 0.10), 0 2px 6px rgba(24, 24, 27, 0.06)",
+        // Brand-tinted glow used for primary CTAs and logo halo. Hex matches `brand-500`.
+        glow: "0 10px 30px -8px rgba(59, 130, 246, 0.45)",
       },
       animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'fade-in': 'fadeIn 0.2s ease-out forwards',
-        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-        'scale-in': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        "fade-in": "fadeIn 0.18s ease-out forwards",
+        "slide-up": "slideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "scale-in": "scaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
       },
       keyframes: {
         fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
         },
         slideUp: {
-          '0%': { transform: 'translateY(8px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
+          "0%": { transform: "translateY(8px)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
         },
         scaleIn: {
-          '0%': { transform: 'scale(0.95)', opacity: '0' },
-          '100%': { transform: 'scale(1)', opacity: '1' },
+          "0%": { transform: "scale(0.96)", opacity: "0" },
+          "100%": { transform: "scale(1)", opacity: "1" },
         },
       },
     },
   },
   plugins: [],
-}
+};

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Search, Plus, LayoutGrid, LayoutList, CheckSquare, Square, Trash2, Edit, X, GripVertical, Hash, FolderTree } from 'lucide-react';
+import { Search, Plus, LayoutGrid, LayoutList, CheckSquare, Square, Trash2, Edit, X, GripVertical, Hash, FolderTree, ArrowDownAZ } from 'lucide-react';
+import { Dropdown } from './Dropdown';
 
 type SortOrder = 'newest' | 'oldest' | 'a-z' | 'z-a';
 type ViewMode = 'grid' | 'list' | 'masonry' | 'folder';
@@ -82,16 +83,16 @@ export function SearchBar({
 
   if (isSelectMode || selectedCount > 0) {
     return (
-      <div className="flex items-center justify-between py-3 px-5 border-b border-zinc-200 bg-blue-50 shrink-0 z-10 shadow-sm relative">
+      <div className="flex items-center justify-between py-3 px-5 border-b border-zinc-200 bg-brand-50 shrink-0 z-10 shadow-sm relative">
         <div className="flex items-center gap-3">
           <button
             onClick={onSelectAll}
-            className="flex items-center gap-2 px-2 py-1.5 text-blue-700 hover:bg-blue-100/50 rounded-md transition-colors font-medium text-[13px]"
+            className="flex items-center gap-2 px-2 py-1.5 text-brand-700 hover:bg-brand-100/50 rounded-md transition-colors font-medium text-[13px]"
           >
             {isAllSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
             {isAllSelected ? 'Deselect All' : 'Select All'}
           </button>
-          <span className="text-[13px] font-medium text-blue-900">
+          <span className="text-[13px] font-medium text-brand-900">
             {selectedCount} selected
           </span>
         </div>
@@ -107,7 +108,7 @@ export function SearchBar({
           {onCancelSelectMode && (
             <button
               onClick={onCancelSelectMode}
-              className="px-3 h-8 text-blue-700 hover:bg-blue-100/50 rounded-md text-[13px] font-medium transition-colors ml-2"
+              className="px-3 h-8 text-brand-700 hover:bg-brand-100/50 rounded-md text-[13px] font-medium transition-colors ml-2"
             >
               Cancel
             </button>
@@ -127,7 +128,7 @@ export function SearchBar({
           <button
             onClick={onToggleSelectMode}
             title="Select multiple bookmarks"
-            className="p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-md transition-colors"
+            className="btn-icon-sm"
           >
             <Edit className="w-4 h-4" />
           </button>
@@ -141,7 +142,7 @@ export function SearchBar({
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search bookmarks  (press /)"
             aria-label="Search bookmarks"
-              className="w-full h-8 pl-8 pr-8 bg-zinc-50 border border-zinc-200 rounded-md text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-medium"
+              className="brand-input-sm w-full pl-8 pr-8 font-medium"
             />
             {searchQuery && (
               <button
@@ -158,17 +159,20 @@ export function SearchBar({
 
       <div className="flex items-center gap-3 ml-4">
         {onSortChange && (
-          <select
+          <Dropdown<SortOrder>
+            size="sm"
+            className="w-[124px]"
             value={sortOrder}
-            onChange={(e) => onSortChange(e.target.value as SortOrder)}
-            className="h-8 pl-2 pr-6 bg-zinc-50 border border-zinc-200 rounded-md text-[13px] text-zinc-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-medium appearance-none"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.25rem' }}
-          >
-            <option value="newest">Newest</option>
-            <option value="oldest">Oldest</option>
-            <option value="a-z">A-Z</option>
-            <option value="z-a">Z-A</option>
-          </select>
+            onChange={onSortChange}
+            ariaLabel="Sort bookmarks"
+            buttonLeading={<ArrowDownAZ className="w-3.5 h-3.5 text-zinc-400" />}
+            options={[
+              { value: 'newest', label: 'Newest' },
+              { value: 'oldest', label: 'Oldest' },
+              { value: 'a-z', label: 'A-Z' },
+              { value: 'z-a', label: 'Z-A' },
+            ]}
+          />
         )}
 
         {/* Layout Selector - only show in list/folder view */}
@@ -236,14 +240,14 @@ export function SearchBar({
         {currentTabBookmarked && onEditCurrent ? (
           <button
             onClick={onEditCurrent}
-            className="flex items-center gap-1.5 px-3 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[13px] font-medium transition-colors shadow-sm whitespace-nowrap"
+            className="btn-brand-sm whitespace-nowrap"
           >
             <Edit className="w-4 h-4" /> Edit Bookmark
           </button>
         ) : (
           <button
             onClick={onAdd}
-            className="flex items-center gap-1.5 px-3 h-8 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-[13px] font-medium transition-colors shadow-sm whitespace-nowrap"
+            className="btn-brand-sm whitespace-nowrap"
           >
             <Plus className="w-4 h-4" /> Add
           </button>
@@ -257,7 +261,7 @@ export function SearchBar({
           {searchQuery.trim() && (
             <button
               onClick={() => onSearchChange('')}
-              className="group inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-blue-50 border border-blue-200 text-[11px] font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+              className="group inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-brand-50 border border-brand-200 text-[11px] font-medium text-brand-700 hover:bg-brand-100 transition-colors"
               title="Clear search"
             >
               <Search className="w-3 h-3 opacity-70" />

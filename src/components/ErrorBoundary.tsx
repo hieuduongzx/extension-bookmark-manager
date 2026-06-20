@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <p className="text-sm text-zinc-500 mb-4">{this.state.error?.message}</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-zinc-900 text-white rounded-md text-sm font-medium hover:bg-zinc-800 transition-colors"
+            className="btn-brand"
           >
             Reload Extension
           </button>

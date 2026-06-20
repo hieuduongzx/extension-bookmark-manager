@@ -488,12 +488,6 @@ function App() {
     setActiveTags(prev => prev.includes(t) ? prev : [...prev, t]);
   }, []);
 
-  const handleToggleAi = useCallback(() => {
-    const nextState = !(state.settings?.enableAi ?? false);
-    send({ type: 'BM:updateSettings', payload: { enableAi: nextState } });
-    showToast(nextState ? 'AI Auto-Tagging Enabled' : 'AI Auto-Tagging Disabled');
-  }, [state.settings, send, showToast]);
-
   const handleEditCollectionById = useCallback((id: string) => {
     const collection = state.collections.find(c => c.id === id);
     if (collection) {
@@ -533,8 +527,6 @@ function App() {
         onOpenDashboard={!isDashboard ? handleOpenDashboard : undefined}
         onEditCollection={handleEditCollectionById}
         onTogglePinCollection={handleTogglePinCollection}
-        enableAi={state.settings?.enableAi ?? false}
-        onToggleAi={handleToggleAi}
         onDropBookmark={handleDropBookmark}
         onDropCollection={handleDropCollection}
       />
@@ -660,7 +652,7 @@ function App() {
             className="pointer-events-auto bg-white text-zinc-900 border border-zinc-200 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 animate-slide-up"
             role="status"
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
             {t.msg}
             {t.action && (
               <button
@@ -670,7 +662,7 @@ function App() {
                   dismissToast(t.id);
                   await action.onClick();
                 }}
-                className="ml-2 text-blue-600 hover:text-blue-700 font-semibold"
+                className="ml-2 text-brand-600 hover:text-brand-700 font-semibold"
               >
                 {t.action.label}
               </button>

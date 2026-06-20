@@ -94,7 +94,7 @@ function BookmarkListInner({
           {!hasSearch && !hasTags && activeCollection !== COLLECTION.TRASH && onAdd && (
             <button
               onClick={onAdd}
-              className="px-3 h-8 rounded-md text-[13px] font-medium bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 transition-colors"
+              className="btn-brand-sm"
             >
               Add bookmark
             </button>

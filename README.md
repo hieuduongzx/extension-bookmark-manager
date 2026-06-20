@@ -13,7 +13,6 @@ A beautiful bookmark manager Chrome extension inspired by Raindrop.io. Save, org
 - Bulk select / move to trash with undo
 - Import from browser bookmarks or JSON, export to JSON
 - Auto-fetch link previews (Open Graph / Twitter cards)
-- AI-powered tag and collection suggestions (optional)
 
 ## Tech Stack
 
@@ -73,7 +72,6 @@ src/
 ├── storage.ts         # Chrome storage utilities
 ├── types.ts           # TypeScript type definitions
 ├── utils.ts           # Utility functions
-├── ai.ts              # AI tag suggestion logic
 └── index.css          # Global styles
 ```
 

@@ -119,7 +119,7 @@ function ActionsMenu({ bookmark, isTrash, menuRef, anchorRef, onEdit, onDelete, 
               onClose();
               onRestore(bookmark.id);
             }}
-            className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-blue-600 hover:bg-blue-50 rounded cursor-pointer font-medium transition-colors w-full text-left"
+            className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-brand-600 hover:bg-brand-50 rounded cursor-pointer font-medium transition-colors w-full text-left"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Restore
@@ -159,7 +159,7 @@ function CheckboxToggle({ bookmarkId, isSelected, onToggleSelect }: CheckboxTogg
         onToggleSelect(bookmarkId, !isSelected);
       }}
       className={`p-1 rounded-md transition-opacity bg-white opacity-100 ${
-        isSelected ? 'text-blue-600' : 'text-zinc-300 hover:text-zinc-500'
+        isSelected ? 'text-brand-600' : 'text-zinc-300 hover:text-zinc-500'
       }`}
     >
       {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
@@ -183,7 +183,7 @@ function PinButton({ bookmarkId, isPinned, onTogglePin }: PinButtonProps) {
         onTogglePin(bookmarkId);
       }}
       className={`p-1 rounded-md transition-opacity bg-white ${
-        isPinned ? 'opacity-100 text-blue-600' : 'opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500'
+        isPinned ? 'opacity-100 text-brand-600' : 'opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500'
       }`}
       title={isPinned ? "Unpin Bookmark" : "Pin Bookmark"}
     >
@@ -270,8 +270,8 @@ function BookmarkCardInner({
         role="button"
         tabIndex={0}
         aria-label={`Open ${bookmark.title || hostname}`}
-        className={`group flex flex-col items-center justify-center aspect-square p-2 rounded-2xl border shadow-sm transition-all cursor-pointer relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-          isSelected ? 'bg-blue-50/50 border-blue-200 shadow-md' : 'bg-white border-zinc-200 hover:shadow-md hover:border-zinc-300'
+        className={`group flex flex-col items-center justify-center aspect-square p-2 rounded-2xl border shadow-sm transition-all cursor-pointer relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+          isSelected ? 'bg-brand-50/50 border-brand-200 shadow-md' : 'bg-white border-zinc-200 hover:shadow-md hover:border-zinc-300'
         }`}
         title={bookmark.title || hostname}
       >
@@ -307,7 +307,7 @@ function BookmarkCardInner({
             className={`p-1 rounded-md transition-opacity bg-white/80 backdrop-blur-sm border border-zinc-100 shadow-sm ${
               showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             } ${
-              isSelected ? 'text-blue-600 hover:text-blue-800' : 'text-zinc-500 hover:text-zinc-900'
+              isSelected ? 'text-brand-600 hover:text-brand-800' : 'text-zinc-500 hover:text-zinc-900'
             }`}
           >
             <MoreHorizontal className="w-4 h-4" />
@@ -367,15 +367,15 @@ function BookmarkCardInner({
       role="button"
       tabIndex={0}
       aria-label={`Open ${bookmark.title || hostname}`}
-      className={`group flex items-center justify-between p-3 rounded-lg border shadow-sm transition-all cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
-        isSelected ? 'bg-blue-50/50 border-blue-200 shadow-md' : 'bg-white border-zinc-200 hover:shadow-md hover:border-zinc-300'
+      className={`group flex items-center justify-between p-3 rounded-lg border shadow-sm transition-all cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
+        isSelected ? 'bg-brand-50/50 border-brand-200 shadow-md' : 'bg-white border-zinc-200 hover:shadow-md hover:border-zinc-300'
       } ${isDragging ? 'opacity-40 scale-[0.98]' : 'opacity-100'}`}
     >
       {dropIndicator === 'top' && (
-        <span className="absolute -top-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full pointer-events-none" />
+        <span className="absolute -top-1 left-0 right-0 h-0.5 bg-brand-500 rounded-full pointer-events-none" />
       )}
       {dropIndicator === 'bottom' && (
-        <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full pointer-events-none" />
+        <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-brand-500 rounded-full pointer-events-none" />
       )}
       <div className="flex items-center gap-3 min-w-0 flex-1">
         {draggable && !isSelectMode && (
@@ -410,7 +410,7 @@ function BookmarkCardInner({
             >
               {bookmark.title || hostname}
             </h3>
-            <p className={`text-[12px] truncate flex-1 min-w-0 ${isSelected ? 'text-blue-600/70' : 'text-zinc-500'}`} title={bookmark.url}>
+            <p className={`text-[12px] truncate flex-1 min-w-0 ${isSelected ? 'text-brand-600/70' : 'text-zinc-500'}`} title={bookmark.url}>
               {bookmark.url}
             </p>
           </div>
@@ -438,7 +438,7 @@ function BookmarkCardInner({
                 className={`px-1.5 py-0.5 rounded border text-[10px] uppercase font-semibold tracking-wider whitespace-nowrap transition-colors ${
                   onTagClick ? 'cursor-pointer hover:border-zinc-300 hover:bg-zinc-200' : ''
                 } ${
-                  isSelected ? 'bg-blue-100/50 border-blue-200 text-blue-700' : 'bg-zinc-100 border-zinc-200 text-zinc-600'
+                  isSelected ? 'bg-brand-100/50 border-brand-200 text-brand-700' : 'bg-zinc-100 border-zinc-200 text-zinc-600'
                 }`}
               >
                 {tag}
@@ -464,7 +464,7 @@ function BookmarkCardInner({
             setShowMenu(!showMenu);
           }}
           className={`p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity ${
-            isSelected ? 'text-blue-600 hover:bg-blue-100' : 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100'
+            isSelected ? 'text-brand-600 hover:bg-brand-100' : 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100'
           }`}
         >
           <MoreHorizontal className="w-4 h-4" />
@@ -500,8 +500,8 @@ function BookmarkCardInner({
       role="button"
       tabIndex={0}
       aria-label={`Open ${bookmark.title || hostname}`}
-      className={`group flex flex-col rounded-lg border shadow-sm transition-all cursor-pointer relative overflow-hidden min-h-[140px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
-        isSelected ? 'bg-blue-50/50 border-blue-200 shadow-md' : 'bg-white border-zinc-200 hover:shadow-md hover:border-zinc-300'
+      className={`group flex flex-col rounded-lg border shadow-sm transition-all cursor-pointer relative overflow-hidden min-h-[140px] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
+        isSelected ? 'bg-brand-50/50 border-brand-200 shadow-md' : 'bg-white border-zinc-200 hover:shadow-md hover:border-zinc-300'
       }`}
     >
       <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end drop-shadow-sm">
@@ -517,7 +517,7 @@ function BookmarkCardInner({
           className={`p-1 rounded-md transition-opacity bg-white ${
             showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           } ${
-            isSelected ? 'text-blue-600 hover:text-blue-800' : 'text-zinc-400 hover:text-zinc-900'
+            isSelected ? 'text-brand-600 hover:text-brand-800' : 'text-zinc-400 hover:text-zinc-900'
           }`}
         >
           <MoreHorizontal className="w-4 h-4" />
@@ -564,7 +564,7 @@ function BookmarkCardInner({
               {bookmark.title || hostname}
             </h3>
             <div className="flex items-center gap-1.5 text-[12px] min-w-0">
-              <p className={`truncate ${isSelected ? 'text-blue-600/70' : 'text-zinc-500'}`} title={bookmark.url}>
+              <p className={`truncate ${isSelected ? 'text-brand-600/70' : 'text-zinc-500'}`} title={bookmark.url}>
                 {hostname}
               </p>
             </div>
@@ -594,7 +594,7 @@ function BookmarkCardInner({
                 className={`px-1.5 py-0.5 rounded border text-[10px] uppercase font-semibold tracking-wider whitespace-nowrap pointer-events-auto transition-colors ${
                   onTagClick ? 'cursor-pointer hover:border-zinc-300 hover:bg-zinc-200' : ''
                 } ${
-                  isSelected ? 'bg-blue-100/50 border-blue-200 text-blue-700' : 'bg-zinc-100 border-zinc-200 text-zinc-600'
+                  isSelected ? 'bg-brand-100/50 border-brand-200 text-brand-700' : 'bg-zinc-100 border-zinc-200 text-zinc-600'
                 }`}
               >
                 {tag}

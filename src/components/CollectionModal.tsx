@@ -5,6 +5,7 @@ import { Globe, ShoppingCart, Film, Music, Code, Briefcase, Heart, Star, Book } 
 
 import { buildCollectionTree, flattenCollectionTree, getCollectionDescendants } from '../utils';
 import { useEscapeKey, useFocusTrap } from '../hooks';
+import { Dropdown } from './Dropdown';
 
 interface CollectionModalProps {
   existing?: Collection;
@@ -101,7 +102,7 @@ export function CollectionModal({ existing, collections, onSave, onDelete, onClo
           </h2>
           <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-zinc-900 p-1.5 rounded-md hover:bg-zinc-100 transition-colors"
+            className="btn-icon-sm"
           >
             <X className="w-4 h-4" />
           </button>
@@ -134,7 +135,7 @@ export function CollectionModal({ existing, collections, onSave, onDelete, onClo
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full h-9 px-3 bg-zinc-50 border border-zinc-200 rounded-md text-[13px] text-zinc-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-shadow"
+                className="brand-input w-full"
                 placeholder="Design, Tech, Reading..."
               />
             </div>
@@ -143,18 +144,20 @@ export function CollectionModal({ existing, collections, onSave, onDelete, onClo
               <label className="text-[12px] font-medium text-zinc-600 flex items-center gap-1.5">
                 <Folder className="w-3.5 h-3.5 text-zinc-400" /> Parent Collection
               </label>
-              <select
+              <Dropdown
                 value={parentId}
-                onChange={(e) => setParentId(e.target.value)}
-                className="w-full h-9 px-2 bg-zinc-50 border border-zinc-200 rounded-md text-[13px] text-zinc-900 focus:bg-white focus:outline-none focus:border-blue-500 transition-shadow"
-              >
-                <option value="">None (Top Level)</option>
-                {validParents.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {'\u00A0'.repeat(c.depth * 4)}{c.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setParentId}
+                ariaLabel="Parent collection"
+                placeholder="None (Top Level)"
+                options={[
+                  { value: '', label: 'None (Top Level)' },
+                  ...validParents.map((c) => ({
+                    value: c.id,
+                    label: c.name,
+                    depth: c.depth,
+                  })),
+                ]}
+              />
             </div>
 
             <div className="flex flex-col gap-2">
@@ -224,7 +227,7 @@ export function CollectionModal({ existing, collections, onSave, onDelete, onClo
               type="submit"
               form="collection-form"
               disabled={isSaving || !name.trim()}
-              className="px-4 h-8 rounded-md text-[13px] font-medium bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              className="btn-brand-sm px-4"
             >
               {isSaving ? 'Saving...' : 'Save'}
             </button>

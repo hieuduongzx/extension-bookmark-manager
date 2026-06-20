@@ -64,7 +64,7 @@ export function ModalSkeleton() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm">
       <div className="w-full max-w-sm bg-white rounded-xl border border-zinc-200 shadow-xl p-6 flex flex-col items-center gap-3">
-        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-xs text-zinc-500">Loading...</p>
       </div>
     </div>
