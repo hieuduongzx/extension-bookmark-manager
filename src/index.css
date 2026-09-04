@@ -17,7 +17,7 @@
     padding: 0;
   }
   body {
-    background-color: #f4f4f5;
+    background-color: #ffffff;
     color: #18181b;
     font-family:
       "Space Grotesk", "Segoe UI", system-ui, -apple-system,
@@ -27,17 +27,34 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  html.dark body {
+    background-color: #18181b;
+    color: #fafafa;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer components {
   /* Surface — neutral white card with subtle border + 1px shadow. */
   .surface-card {
-    @apply rounded-xl border border-zinc-200 bg-white shadow-card;
+    @apply rounded-xl border border-zinc-200 bg-white shadow-card
+           dark:border-zinc-800 dark:bg-zinc-900;
   }
 
   /* Tiny uppercase label that titles a section / group of fields. */
   .section-label {
-    @apply text-[11px] font-semibold uppercase tracking-wider text-zinc-500;
+    @apply text-[11px] font-semibold uppercase tracking-wider text-zinc-500
+           dark:text-zinc-400;
   }
 
   /* Compact status pill (e.g. "LIVE", "OFF", "TRANSLATING"). */
@@ -52,7 +69,9 @@
            text-[13px] text-zinc-900 placeholder:text-zinc-400
            focus:bg-white focus:border-brand-500
            focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-           transition-colors;
+           transition-colors
+           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100
+           dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900;
   }
 
   /* Compact variant for dense toolbars (bookmark-manager dashboard). */
@@ -61,7 +80,9 @@
            text-[13px] text-zinc-900 placeholder:text-zinc-400
            focus:bg-white focus:border-brand-500
            focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-           transition-colors;
+           transition-colors
+           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100
+           dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900;
   }
 
   /* Solid brand button — default size. */
@@ -94,7 +115,9 @@
            hover:bg-zinc-50 hover:border-zinc-300
            focus:outline-none focus:ring-2 focus:ring-zinc-300/50
            disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors;
+           transition-colors
+           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200
+           dark:hover:bg-zinc-700 dark:hover:border-zinc-600;
   }
 
   .btn-ghost-sm {
@@ -104,7 +127,9 @@
            hover:bg-zinc-50 hover:border-zinc-300
            focus:outline-none focus:ring-2 focus:ring-zinc-300/50
            disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors;
+           transition-colors
+           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200
+           dark:hover:bg-zinc-700 dark:hover:border-zinc-600;
   }
 
   /* Square icon-only button (matches input height). */
@@ -114,7 +139,8 @@
            hover:text-zinc-900 hover:bg-zinc-100
            focus:outline-none focus:ring-2 focus:ring-zinc-300/50
            disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors;
+           transition-colors
+           dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800;
   }
 
   /* Compact variant for dense toolbars / sidebar / modal close. */
@@ -124,7 +150,8 @@
            hover:text-zinc-900 hover:bg-zinc-100
            focus:outline-none focus:ring-2 focus:ring-zinc-300/50
            disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors;
+           transition-colors
+           dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800;
   }
 
   /* ── Lab Studio signature elements (the "maker's mark" across tools) ── */
@@ -149,7 +176,7 @@
   }
 }
 
-/* Shared light-theme scrollbar. */
+/* Shared scrollbar. */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -164,6 +191,12 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #d4d4d8;
 }
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
 
 /* Bookmark-manager brand RGB for the accent gradient line (blue-500). */
 :root {
@@ -177,4 +210,16 @@ input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
   -webkit-text-fill-color: #18181b;
   transition: background-color 5000s ease-in-out 0s;
+}
+html.dark input:-webkit-autofill,
+html.dark input:-webkit-autofill:hover,
+html.dark input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #18181b inset;
+  -webkit-text-fill-color: #fafafa;
+}
+
+/* Focus rings for a11y */
+:focus-visible {
+  outline: 2px solid rgb(59 130 246 / 0.7);
+  outline-offset: 2px;
 }

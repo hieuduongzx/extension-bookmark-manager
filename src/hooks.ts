@@ -2,6 +2,28 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 // ─── useEscapeKey ─────────────────────────────────────────────────────────────
 // Closes modals/menus when user presses Escape. Use in any dismissible UI.
+//
+// A single document-level listener drives a LIFO stack of registered handlers, so only
+// the top-most (most recently opened) layer responds to one Escape press. This avoids the
+// old bug where every open layer's handler fired at once (stopPropagation on a shared
+// document listener doesn't stop sibling listeners on the same target).
+
+type EscapeHandler = () => void;
+const escapeStack: EscapeHandler[] = [];
+let globalEscapeListenerInstalled = false;
+
+function ensureGlobalEscapeListener() {
+  if (globalEscapeListenerInstalled || typeof document === 'undefined') return;
+  globalEscapeListenerInstalled = true;
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const top = escapeStack[escapeStack.length - 1];
+    if (top) {
+      e.stopPropagation();
+      top();
+    }
+  });
+}
 
 export function useEscapeKey(onEscape: () => void, enabled = true) {
   const handlerRef = useRef(onEscape);
@@ -9,14 +31,13 @@ export function useEscapeKey(onEscape: () => void, enabled = true) {
 
   useEffect(() => {
     if (!enabled) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        handlerRef.current();
-      }
+    ensureGlobalEscapeListener();
+    const entry: EscapeHandler = () => handlerRef.current();
+    escapeStack.push(entry);
+    return () => {
+      const i = escapeStack.lastIndexOf(entry);
+      if (i >= 0) escapeStack.splice(i, 1);
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
   }, [enabled]);
 }
 
@@ -98,20 +119,48 @@ export interface ToastItem {
 export function useToastQueue() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const counterRef = useRef(0);
+  const timersRef = useRef<Map<number, number>>(new Map());
 
-  const show = useCallback((msg: string, action?: ToastAction) => {
-    counterRef.current += 1;
-    const id = counterRef.current;
-    setToasts((prev) => [...prev, { id, msg, action }]);
-
-    const duration = action ? 5000 : 2500;
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, duration);
+  const clearTimer = useCallback((id: number) => {
+    const timer = timersRef.current.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
   }, []);
 
-  const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const show = useCallback(
+    (msg: string, action?: ToastAction) => {
+      counterRef.current += 1;
+      const id = counterRef.current;
+      setToasts((prev) => [...prev, { id, msg, action }]);
+
+      const duration = action ? 5000 : 2500;
+      const timer = window.setTimeout(() => {
+        timersRef.current.delete(id);
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, duration);
+      timersRef.current.set(id, timer);
+    },
+    []
+  );
+
+  const dismiss = useCallback(
+    (id: number) => {
+      clearTimer(id);
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    },
+    [clearTimer]
+  );
+
+  // Clear any pending dismissal timers on unmount so they don't fire into an
+  // unmounted component.
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.clear();
+    };
   }, []);
 
   return { toasts, show, dismiss };

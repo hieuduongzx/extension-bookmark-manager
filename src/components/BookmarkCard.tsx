@@ -2,7 +2,10 @@ import { memo, useState, useRef, useEffect, useCallback, useLayoutEffect } from 
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, Edit, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Pin, GripVertical } from 'lucide-react';
 import type { Bookmark } from '../types';
-import { getDomain, getFavicon, getFaviconFallback } from '../utils';
+import { getDomain, getFavicon, getFaviconFallback, isBrokenLink } from '../utils';
+import { useEscapeKey } from '../hooks';
+
+export type ReorderPosition = 'before' | 'after';
 
 interface BookmarkCardProps {
   bookmark: Bookmark;
@@ -38,6 +41,40 @@ interface ActionsMenuProps {
 
 function ActionsMenu({ bookmark, isTrash, menuRef, anchorRef, onEdit, onDelete, onRestore, onClose }: ActionsMenuProps) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEscapeKey(onClose);
+
+  // Move focus into the menu once it's positioned, and return focus to the trigger on close.
+  useEffect(() => {
+    if (!pos) return;
+    const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
+    first?.focus();
+    const anchor = anchorRef.current;
+    return () => {
+      if (anchor?.isConnected) anchor.focus();
+    };
+  }, [pos, menuRef, anchorRef]);
+
+  const onMenuKeyDown = (e: React.KeyboardEvent) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
+    );
+    if (items.length === 0) return;
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(idx + 1 + items.length) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(idx - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    }
+  };
 
   useLayoutEffect(() => {
     const update = () => {
@@ -81,32 +118,37 @@ function ActionsMenu({ bookmark, isTrash, menuRef, anchorRef, onEdit, onDelete, 
   return createPortal(
     <div
       ref={menuRef}
+      role="menu"
+      aria-label="Bookmark actions"
       style={{ position: 'fixed', top: pos.top, left: pos.left, width: 160 }}
-      className="bg-white border border-zinc-200 shadow-xl rounded-md overflow-hidden z-[1000] animate-slide-up"
+      className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-xl rounded-md overflow-hidden z-[1000] animate-slide-up focus:outline-none"
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={onMenuKeyDown}
     >
       <div className="p-1 flex flex-col">
         <a
           href={bookmark.url}
           target="_blank"
           rel="noreferrer"
+          role="menuitem"
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 rounded cursor-pointer font-medium transition-colors"
+          className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 focus:bg-zinc-100 dark:text-zinc-200 dark:hover:text-zinc-50 dark:hover:bg-zinc-700 dark:focus:bg-zinc-700 rounded cursor-pointer font-medium transition-colors focus:outline-none"
         >
           <ExternalLink className="w-3.5 h-3.5" />
           Open Link
         </a>
         {!isTrash && (
           <button
+            role="menuitem"
             onClick={(e) => {
               e.stopPropagation();
               onClose();
               onEdit(bookmark);
             }}
-            className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 rounded cursor-pointer font-medium transition-colors w-full text-left"
+            className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 focus:bg-zinc-100 dark:text-zinc-200 dark:hover:text-zinc-50 dark:hover:bg-zinc-700 dark:focus:bg-zinc-700 rounded cursor-pointer font-medium transition-colors w-full text-left focus:outline-none"
           >
             <Edit className="w-3.5 h-3.5" />
             Edit
@@ -114,25 +156,27 @@ function ActionsMenu({ bookmark, isTrash, menuRef, anchorRef, onEdit, onDelete, 
         )}
         {isTrash && (
           <button
+            role="menuitem"
             onClick={(e) => {
               e.stopPropagation();
               onClose();
               onRestore(bookmark.id);
             }}
-            className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-brand-600 hover:bg-brand-50 rounded cursor-pointer font-medium transition-colors w-full text-left"
+            className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-brand-600 hover:bg-brand-50 focus:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/50 dark:focus:bg-brand-950/50 rounded cursor-pointer font-medium transition-colors w-full text-left focus:outline-none"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Restore
           </button>
         )}
-        <div className="h-[1px] bg-zinc-100 my-1 mx-1" />
+        <div className="h-[1px] bg-zinc-100 dark:bg-zinc-700 my-1 mx-1" />
         <button
+          role="menuitem"
           onClick={(e) => {
             e.stopPropagation();
             onClose();
             onDelete(bookmark.id, !!isTrash);
           }}
-          className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-red-600 hover:bg-red-50 rounded cursor-pointer font-medium transition-colors w-full text-left"
+          className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-red-600 hover:bg-red-50 focus:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 dark:focus:bg-red-950/40 rounded cursor-pointer font-medium transition-colors w-full text-left focus:outline-none"
         >
           <Trash2 className="w-3.5 h-3.5" />
           {isTrash ? 'Delete Forever' : 'Move to Trash'}
@@ -158,8 +202,10 @@ function CheckboxToggle({ bookmarkId, isSelected, onToggleSelect }: CheckboxTogg
         e.stopPropagation();
         onToggleSelect(bookmarkId, !isSelected);
       }}
-      className={`p-1 rounded-md transition-opacity bg-white opacity-100 ${
-        isSelected ? 'text-brand-600' : 'text-zinc-300 hover:text-zinc-500'
+      className={`p-1 rounded-md transition-opacity bg-white dark:bg-zinc-800 opacity-100 ${
+        isSelected
+          ? 'text-brand-600 dark:text-brand-400'
+          : 'text-zinc-300 hover:text-zinc-500 dark:text-zinc-600 dark:hover:text-zinc-400'
       }`}
     >
       {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
@@ -182,8 +228,10 @@ function PinButton({ bookmarkId, isPinned, onTogglePin }: PinButtonProps) {
         e.stopPropagation();
         onTogglePin(bookmarkId);
       }}
-      className={`p-1 rounded-md transition-opacity bg-white ${
-        isPinned ? 'opacity-100 text-brand-600' : 'opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500'
+      className={`p-1 rounded-md transition-opacity bg-white dark:bg-zinc-800 ${
+        isPinned
+          ? 'opacity-100 text-brand-600 dark:text-brand-400'
+          : 'opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500 dark:text-zinc-600 dark:hover:text-zinc-400'
       }`}
       title={isPinned ? "Unpin Bookmark" : "Pin Bookmark"}
     >
@@ -205,7 +253,7 @@ function BookmarkCardInner({
   onToggleSelect,
   onTogglePin,
   isSelectMode = false,
-  onTagClick,
+  onTagClick: _onTagClick,
   compact = false,
   draggable = false,
   onDragStart,
@@ -259,10 +307,13 @@ function BookmarkCardInner({
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData('application/bookmark-id', bookmark.id);
+          e.dataTransfer.effectAllowed = 'move';
         }}
         onClick={isSelectMode ? handleToggleSelectWrapped : handleCardClick}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
+            // Don't hijack Space/Enter that belongs to a focused inner control (pin/checkbox/menu).
+            if (e.target !== e.currentTarget) return;
             e.preventDefault();
             (isSelectMode ? handleToggleSelectWrapped : () => window.open(bookmark.url, '_blank', 'noopener,noreferrer'))();
           }
@@ -270,35 +321,35 @@ function BookmarkCardInner({
         role="button"
         tabIndex={0}
         aria-label={`Open ${bookmark.title || hostname}`}
-        className={`group flex flex-col items-center justify-center aspect-square p-3 rounded-2xl border transition-all duration-200 cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+        className={`group flex flex-col items-center justify-center gap-1.5 p-1.5 rounded-lg transition-colors duration-150 cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-zinc-900 ${
           isSelected
-            ? 'bg-brand-50/50 border-brand-300 shadow-md ring-1 ring-brand-200'
-            : 'bg-white border-zinc-200/80 hover:border-zinc-300 hover:shadow-md hover:-translate-y-0.5'
+            ? 'bg-brand-50/70 dark:bg-brand-950/40'
+            : 'hover:bg-zinc-100/80 dark:hover:bg-zinc-800/50'
         }`}
         title={bookmark.title || hostname}
       >
-        <div className="absolute top-2 right-2 z-10 flex flex-col gap-0.5 items-end">
+        <div className="absolute top-0.5 right-0.5 z-10 flex flex-col gap-0.5 items-end">
           <CheckboxToggle bookmarkId={bookmark.id} isSelected={isSelected} onToggleSelect={isSelectMode ? onToggleSelect : undefined} />
           <PinButton bookmarkId={bookmark.id} isPinned={!!bookmark.pinned} onTogglePin={onTogglePin} />
         </div>
 
-        <div className="w-10 h-10 rounded-xl shrink-0 bg-zinc-50 border border-zinc-200/80 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:scale-110">
+        <div className="w-9 h-9 shrink-0 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:scale-110">
           <img
             src={faviconUrl}
             alt=""
             loading="lazy"
-            className="w-6 h-6"
+            className="w-7 h-7"
             onError={(e) => {
               (e.target as HTMLImageElement).src = getFaviconFallback(bookmark.url);
             }}
           />
         </div>
 
-        <span className="mt-2 text-[11px] font-medium text-zinc-500 truncate max-w-full px-1 leading-tight">
-          {hostname}
+        <span className="text-[11px] font-medium text-zinc-800 dark:text-zinc-100 line-clamp-2 text-center max-w-full px-0.5 leading-tight break-words">
+          {bookmark.title || hostname}
         </span>
 
-        <div className="absolute bottom-2 right-2 z-10">
+        <div className="absolute bottom-0.5 right-0.5 z-10">
           <button
             ref={btnRef}
             onClick={(e) => {
@@ -306,13 +357,15 @@ function BookmarkCardInner({
               e.stopPropagation();
               setShowMenu(!showMenu);
             }}
-            className={`p-1.5 rounded-lg transition-opacity bg-white/90 backdrop-blur-sm border border-zinc-200/60 shadow-sm ${
+            className={`p-1 rounded-md transition-opacity ${
               showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             } ${
-              isSelected ? 'text-brand-600 hover:text-brand-800' : 'text-zinc-400 hover:text-zinc-700'
+              isSelected
+                ? 'text-brand-600 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-300'
+                : 'text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200'
             }`}
           >
-            <MoreHorizontal className="w-4 h-4" />
+            <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -369,11 +422,11 @@ function BookmarkCardInner({
       role="button"
       tabIndex={0}
       aria-label={`Open ${bookmark.title || hostname}`}
-      className={`group flex items-center gap-3 px-4 py-3 transition-all cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
+      className={`group flex items-center gap-3 px-4 py-3 transition-all cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-zinc-900 ${
         isSelected
-          ? 'bg-brand-50/70 border-brand-200'
-          : 'bg-white hover:bg-zinc-50/80'
-      } border-b border-zinc-100 last:border-b-0 ${isDragging ? 'opacity-40' : 'opacity-100'}`}
+          ? 'bg-brand-50/70 border-brand-200 dark:bg-brand-950/40 dark:border-brand-900'
+          : 'bg-white hover:bg-zinc-50/80 dark:bg-zinc-900 dark:hover:bg-zinc-800/60'
+      } border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 ${isDragging ? 'opacity-40' : 'opacity-100'}`}
     >
       {dropIndicator === 'top' && (
         <span className="absolute -top-px left-0 right-0 h-0.5 bg-brand-500 rounded-full pointer-events-none" />
@@ -384,7 +437,7 @@ function BookmarkCardInner({
       <div className="flex items-center gap-3 min-w-0 flex-1">
         {draggable && !isSelectMode && (
           <div
-            className="text-zinc-300 hover:text-zinc-500 cursor-grab active:cursor-grabbing shrink-0 select-none"
+            className="text-zinc-300 hover:text-zinc-500 dark:text-zinc-600 dark:hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0 select-none"
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="w-4 h-4" />
@@ -393,7 +446,7 @@ function BookmarkCardInner({
         <CheckboxToggle bookmarkId={bookmark.id} isSelected={isSelected} onToggleSelect={isSelectMode ? onToggleSelect : undefined} />
 
         {/* Favicon */}
-        <div className="w-9 h-9 rounded-lg shrink-0 bg-zinc-50 border border-zinc-200/80 flex items-center justify-center overflow-hidden">
+        <div className="w-9 h-9 rounded-lg shrink-0 bg-zinc-50 border border-zinc-200/80 dark:bg-zinc-800 dark:border-zinc-700 flex items-center justify-center overflow-hidden">
           <img
             src={faviconUrl}
             alt=""
@@ -409,47 +462,24 @@ function BookmarkCardInner({
         <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
           <div className="flex items-center gap-3">
             <h3
-              className="text-[13px] font-semibold text-zinc-900 truncate max-w-[260px] shrink-0"
+              className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-50 truncate max-w-[260px] shrink-0"
               title={bookmark.title || hostname}
             >
               {bookmark.title || hostname}
             </h3>
-            <p className="text-[12px] text-zinc-400 truncate flex-1 min-w-0" title={bookmark.url}>
+            {isBrokenLink(bookmark) && (
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
+                Broken
+              </span>
+            )}
+            <p className="text-[12px] text-zinc-500 dark:text-zinc-400 truncate flex-1 min-w-0" title={bookmark.url}>
               {hostname}
             </p>
           </div>
           {!compact && bookmark.note && (
-            <p className="text-[12px] text-zinc-500 truncate italic">{bookmark.note}</p>
+            <p className="text-[12px] text-zinc-500 dark:text-zinc-400 truncate italic">{bookmark.note}</p>
           )}
         </div>
-
-        {/* Tags */}
-        {!compact && (
-          <div className="hidden sm:flex items-center gap-1.5 overflow-hidden shrink-0">
-            {bookmark.tags.slice(0, 2).map((tag) => (
-              <button
-                key={tag}
-                onClick={(e) => {
-                  if (onTagClick) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onTagClick(tag);
-                  }
-                }}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
-                  onTagClick ? 'cursor-pointer hover:bg-zinc-200' : ''
-                } ${
-                  isSelected ? 'bg-brand-100 text-brand-700' : 'bg-zinc-100 text-zinc-600'
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
-            {bookmark.tags.length > 2 && (
-              <span className="text-[11px] text-zinc-400 font-medium">+{bookmark.tags.length - 2}</span>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Action Buttons */}
@@ -463,7 +493,9 @@ function BookmarkCardInner({
             setShowMenu(!showMenu);
           }}
           className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity ${
-            isSelected ? 'text-brand-600 hover:bg-brand-100' : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100'
+            isSelected
+              ? 'text-brand-600 hover:bg-brand-100 dark:text-brand-400 dark:hover:bg-brand-900/50'
+              : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-500 dark:hover:text-zinc-200 dark:hover:bg-zinc-800'
           }`}
         >
           <MoreHorizontal className="w-4 h-4" />
@@ -487,6 +519,7 @@ function BookmarkCardInner({
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData('application/bookmark-id', bookmark.id);
+        e.dataTransfer.effectAllowed = 'move';
       }}
       onClick={isSelectMode ? handleToggleSelectWrapped : handleCardClick}
       onKeyDown={(e) => {
@@ -499,13 +532,13 @@ function BookmarkCardInner({
       role="button"
       tabIndex={0}
       aria-label={`Open ${bookmark.title || hostname}`}
-      className={`group flex flex-col rounded-xl border transition-all duration-200 cursor-pointer relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+      className={`group flex flex-col h-[112px] rounded-xl border transition-all duration-200 cursor-pointer relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900 ${
         isSelected
-          ? 'bg-brand-50/50 border-brand-300 shadow-md ring-1 ring-brand-200'
-          : 'bg-white border-zinc-200/80 hover:border-zinc-300 hover:shadow-md hover:-translate-y-0.5'
+          ? 'bg-brand-50/50 border-brand-300 shadow-md ring-1 ring-brand-200 dark:bg-brand-950/30 dark:border-brand-700 dark:ring-brand-800'
+          : 'bg-white border-zinc-200/80 hover:border-zinc-300 hover:shadow-md hover:-translate-y-0.5 dark:bg-zinc-900 dark:border-zinc-700/80 dark:hover:border-zinc-600'
       }`}
     >
-      <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1 items-end">
+      <div className="absolute top-1.5 right-1.5 z-10 flex flex-col gap-0.5 items-end">
         <CheckboxToggle bookmarkId={bookmark.id} isSelected={isSelected} onToggleSelect={isSelectMode ? onToggleSelect : undefined} />
         <PinButton bookmarkId={bookmark.id} isPinned={!!bookmark.pinned} onTogglePin={onTogglePin} />
         <button
@@ -515,19 +548,21 @@ function BookmarkCardInner({
             e.stopPropagation();
             setShowMenu(!showMenu);
           }}
-          className={`p-1.5 rounded-lg transition-opacity bg-white/90 backdrop-blur-sm border border-zinc-200/60 shadow-sm ${
+          className={`p-1 rounded-md transition-opacity bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm border border-zinc-200/60 dark:border-zinc-700/60 shadow-sm ${
             showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           } ${
-            isSelected ? 'text-brand-600 hover:text-brand-800' : 'text-zinc-400 hover:text-zinc-700'
+            isSelected
+              ? 'text-brand-600 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-300'
+              : 'text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200'
           }`}
         >
-          <MoreHorizontal className="w-4 h-4" />
+          <MoreHorizontal className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Cover Image */}
-      {bookmark.coverUrl && (
-        <div className="w-full aspect-[16/9] bg-zinc-100 relative shrink-0">
+      {/* Cover banner — same reserved height for all cards so with/without image stay equal */}
+      <div className="w-full h-14 bg-zinc-100 dark:bg-zinc-800 relative shrink-0 overflow-hidden">
+        {bookmark.coverUrl ? (
           <img
             src={bookmark.coverUrl}
             alt=""
@@ -537,68 +572,40 @@ function BookmarkCardInner({
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2.5 flex-1 min-h-0 px-3 py-2">
+        {/* Favicon — always separate from cover */}
+        <div className="w-8 h-8 rounded-lg shrink-0 bg-zinc-50 border border-zinc-200/80 dark:bg-zinc-800 dark:border-zinc-700 flex items-center justify-center overflow-hidden -mt-5 z-[1] ring-2 ring-white dark:ring-zinc-900">
+          <img
+            src={faviconUrl}
+            alt=""
+            loading="lazy"
+            className="w-4 h-4"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = getFaviconFallback(bookmark.url);
+            }}
+          />
         </div>
-      )}
 
-      <div className="flex flex-col flex-1 p-4">
-        <div className="flex items-start gap-3 w-full">
-          {/* Favicon */}
-          <div className={`w-9 h-9 rounded-lg shrink-0 bg-zinc-50 border border-zinc-200/80 flex items-center justify-center overflow-hidden ${bookmark.coverUrl ? '-mt-8 z-10 ring-2 ring-white' : 'mt-0.5'}`}>
-            <img
-              src={faviconUrl}
-              alt=""
-              loading="lazy"
-              className="w-5 h-5"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = getFaviconFallback(bookmark.url);
-              }}
-            />
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            <h3
-              className="text-[13px] font-semibold text-zinc-900 line-clamp-2 leading-snug"
-              title={bookmark.title}
-            >
-              {bookmark.title || hostname}
-            </h3>
-            <p className="text-[12px] text-zinc-400 truncate mt-0.5">
+        <div className="flex-1 min-w-0 pr-6">
+          <h3
+            className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-50 truncate leading-tight"
+            title={bookmark.title || hostname}
+          >
+            {bookmark.title || hostname}
+          </h3>
+          <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate" title={bookmark.url}>
               {hostname}
             </p>
+            {isBrokenLink(bookmark) && (
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
+                Broken
+              </span>
+            )}
           </div>
-        </div>
-
-        {bookmark.note && (
-          <p className="mt-3 text-[12px] text-zinc-500 line-clamp-2 leading-relaxed italic bg-zinc-50 rounded-lg px-3 py-2 border border-zinc-100">
-            {bookmark.note}
-          </p>
-        )}
-
-        {/* Footer / Tags */}
-        <div className="mt-auto pt-3 flex items-center gap-1.5 overflow-hidden">
-          {bookmark.tags.slice(0, 3).map((tag) => (
-            <button
-              key={tag}
-              onClick={(e) => {
-                if (onTagClick) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onTagClick(tag);
-                }
-              }}
-              className={`px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
-                onTagClick ? 'cursor-pointer hover:bg-zinc-200' : ''
-              } ${
-                isSelected ? 'bg-brand-100 text-brand-700' : 'bg-zinc-100 text-zinc-600'
-              }`}
-            >
-              {tag}
-            </button>
-          ))}
-          {bookmark.tags.length > 3 && (
-            <span className="text-[11px] text-zinc-400 font-medium">+{bookmark.tags.length - 3}</span>
-          )}
         </div>
       </div>
 

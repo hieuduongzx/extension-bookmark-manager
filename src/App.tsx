@@ -1,102 +1,255 @@
-import { useState, useMemo, useEffect, useCallback, lazy, Suspense, useTransition } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense, useTransition } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { SearchBar } from './components/SearchBar';
 import { BookmarkList } from './components/BookmarkList';
 import { FolderView } from './components/FolderView';
-import { SidebarSkeleton, SearchBarSkeleton, BookmarkListSkeleton, ModalSkeleton } from './components/Skeletons';
-import { COLLECTION } from './types';
-import type { Bookmark, Collection, CollectionColor, CollectionIcon, AppState, Message } from './types';
-import { buildDescendantsMap } from './utils';
+import { QuickSave } from './components/QuickSave';
+import { SidebarSkeleton, SearchBarSkeleton, BookmarkListSkeleton, ModalSkeleton, QuickSaveSkeleton } from './components/Skeletons';
+import {
+  COLLECTION,
+  DEFAULT_SETTINGS,
+  SMART,
+  isSmartCollection,
+  type Bookmark,
+  type Collection,
+  type CollectionColor,
+  type CollectionIcon,
+  type AppState,
+  type AppSettings,
+  type Message,
+  type SortOrder,
+  type ViewMode,
+} from './types';
+import {
+  applyTheme,
+  buildDescendantsMap,
+  filterBySmartCollection,
+  findBookmarkByUrl,
+  getDomain,
+  matchesSearch,
+  parseSearchQuery,
+} from './utils';
 import { useDebouncedValue, useToastQueue } from './hooks';
+import { createT, setLocale } from './i18n';
+import { STORAGE_KEYS } from './storage';
+import type { GDriveStatus, GDriveUiStatus } from './gdrive';
 
-const AddBookmarkModal = lazy(() => import('./components/AddBookmarkModal').then(m => ({ default: m.AddBookmarkModal })));
-const CollectionModal = lazy(() => import('./components/CollectionModal').then(m => ({ default: m.CollectionModal })));
+const AddBookmarkModal = lazy(() =>
+  import('./components/AddBookmarkModal').then((m) => ({ default: m.AddBookmarkModal }))
+);
+const CollectionModal = lazy(() =>
+  import('./components/CollectionModal').then((m) => ({ default: m.CollectionModal }))
+);
+const SettingsModal = lazy(() =>
+  import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
 
-// Custom Hook to manage extension state
+type ColumnCount = 1 | 2 | 3 | 4 | 5;
+
+/** Parse a stored column count, falling back when the value is missing/NaN/out of range. */
+function parseColumns(raw: string | null, fallback: ColumnCount): ColumnCount {
+  const n = raw != null ? parseInt(raw, 10) : NaN;
+  return n === 1 || n === 2 || n === 3 || n === 4 || n === 5 ? n : fallback;
+}
+
 function useExtensionState() {
-  const [state, setState] = useState<AppState>({ bookmarks: [], collections: [] });
+  const [state, setState] = useState<AppState>({
+    bookmarks: [],
+    collections: [],
+    settings: { ...DEFAULT_SETTINGS },
+  });
   const [isLoaded, setIsLoaded] = useState(false);
+
+  const applyResponse = useCallback((response: AppState | undefined) => {
+    if (!response || (response as { error?: string }).error) return;
+    setState({
+      bookmarks: response.bookmarks ?? [],
+      collections: response.collections ?? [],
+      settings: { ...DEFAULT_SETTINGS, ...(response.settings || {}) },
+    });
+  }, []);
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'BM:getState' } satisfies Message, (response) => {
       if (response && !response.error) {
-        setState(response);
-        setIsLoaded(true);
+        applyResponse(response);
       } else {
-        setIsLoaded(true);
-        console.error("Failed to load state", response?.error);
+        console.error('Failed to load state', response?.error);
       }
+      setIsLoaded(true);
     });
-  }, []);
+  }, [applyResponse]);
 
-  const send = useCallback((msg: Message): Promise<AppState> => {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(msg, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        if (response?.error) {
-          reject(new Error(response.error));
-          return;
-        }
-        if (response && !response.error) {
-          setState(response);
-          resolve(response);
-          return;
-        }
-        reject(new Error('No response from background service'));
+  // Multi-window / multi-view sync
+  useEffect(() => {
+    const onChanged = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      area: string
+    ) => {
+      if (area !== 'local') return;
+      if (
+        changes[STORAGE_KEYS.bookmarks] ||
+        changes[STORAGE_KEYS.collections] ||
+        changes[STORAGE_KEYS.settings]
+      ) {
+        chrome.runtime.sendMessage({ type: 'BM:getState' } satisfies Message, (response) => {
+          if (response && !response.error) applyResponse(response);
+        });
+      }
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, [applyResponse]);
+
+  const send = useCallback(
+    (msg: Message): Promise<AppState> => {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(msg, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          if (response?.error) {
+            reject(new Error(response.error));
+            return;
+          }
+          if (response && !response.error) {
+            applyResponse(response);
+            resolve(response as AppState);
+            return;
+          }
+          reject(new Error('No response from background service'));
+        });
       });
-    });
-  }, []);
+    },
+    [applyResponse]
+  );
 
-  return { state, send, isLoaded };
+  return { state, send, isLoaded, setState };
 }
 
 function App() {
   const { state, send, isLoaded } = useExtensionState();
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const isDashboard = params.get('target') === 'dashboard';
+  const isLibrary = params.get('view') === 'library';
+  const initialQ = params.get('q') || '';
+
   const [activeCollection, setActiveCollection] = useState<string>(COLLECTION.ALL);
   const [isPending, startTransition] = useTransition();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQ);
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 120);
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isSelectMode, setIsSelectMode] = useState<boolean>(false);
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'a-z' | 'z-a'>('newest');
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [showPrefs, setShowPrefs] = useState(false);
+  const [forceLibrary, setForceLibrary] = useState(isLibrary);
+  const [autoGdriveConnect, setAutoGdriveConnect] = useState(
+    () => params.get('gdrive') === 'connect'
+  );
+  const [prefsFocusGDrive, setPrefsFocusGDrive] = useState(
+    () => params.get('gdrive') === 'connect'
+  );
+  const [gdriveStatus, setGdriveStatus] = useState<GDriveStatus | null>(null);
+  const [gdriveBusy, setGdriveBusy] = useState(false);
 
-  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry' | 'folder'>(() => {
-    return (localStorage.getItem('bm_viewMode') as 'grid' | 'list' | 'masonry' | 'folder') || 'grid';
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('bm_viewMode') as ViewMode | null;
+    if (saved === 'grid' || saved === 'list' || saved === 'masonry' || saved === 'folder') {
+      return saved;
+    }
+    // List is the default view.
+    return 'list';
   });
 
-  const isDashboard = new URLSearchParams(window.location.search).get('target') === 'dashboard';
+  const showQuickSave =
+    !isDashboard && !forceLibrary && state.settings.showQuickSave !== false;
 
-  const handleViewModeChange = useCallback((mode: 'grid' | 'list' | 'masonry' | 'folder') => {
+  useEffect(() => {
+    applyTheme(state.settings.theme);
+    setLocale(state.settings.locale);
+  }, [state.settings.theme, state.settings.locale]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+      if (state.settings.theme === 'system') applyTheme('system');
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [state.settings.theme]);
+
+  useEffect(() => {
+    if (state.settings.defaultSort) setSortOrder(state.settings.defaultSort);
+  }, [state.settings.defaultSort]);
+
+  // Seed the view mode from the user's saved default the first time state loads,
+  // unless a per-device localStorage override already exists.
+  const didSeedViewMode = useRef(false);
+  useEffect(() => {
+    if (!isLoaded || didSeedViewMode.current) return;
+    didSeedViewMode.current = true;
+    if (!localStorage.getItem('bm_viewMode') && state.settings.defaultViewMode) {
+      setViewMode(state.settings.defaultViewMode);
+    }
+  }, [isLoaded, state.settings.defaultViewMode]);
+
+  // Deep-link from popup: open Settings and start Drive connect on Dashboard
+  useEffect(() => {
+    if (!isLoaded || !autoGdriveConnect || !isDashboard) return;
+    setForceLibrary(true);
+    setShowPrefs(true);
+    setPrefsFocusGDrive(true);
+  }, [isLoaded, autoGdriveConnect, isDashboard]);
+
+  const refreshGDriveStatus = useCallback(() => {
+    chrome.runtime.sendMessage({ type: 'BM:gdriveStatus' } satisfies Message, (response) => {
+      if (chrome.runtime.lastError || response?.error) return;
+      setGdriveStatus(response as GDriveStatus);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    refreshGDriveStatus();
+  }, [isLoaded, refreshGDriveStatus]);
+
+  const gdriveUi: GDriveUiStatus | null = useMemo(() => {
+    if (!gdriveStatus) {
+      return { connected: false, email: null, lastSyncAt: null, busy: gdriveBusy };
+    }
+    return {
+      connected: gdriveStatus.connected,
+      email: gdriveStatus.email,
+      lastSyncAt: gdriveStatus.lastSyncAt,
+      busy: gdriveBusy,
+    };
+  }, [gdriveStatus, gdriveBusy]);
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
     localStorage.setItem('bm_viewMode', mode);
   }, []);
 
-  const [bookmarkColumns, setBookmarkColumns] = useState<1 | 2 | 3 | 4 | 5>(() => {
-    const saved = localStorage.getItem('bm_bookmarkColumns');
-    return (saved ? parseInt(saved, 10) : 1) as 1 | 2 | 3 | 4 | 5;
-  });
+  const [bookmarkColumns, setBookmarkColumns] = useState<1 | 2 | 3 | 4 | 5>(() =>
+    parseColumns(localStorage.getItem('bm_bookmarkColumns'), 1)
+  );
 
   const handleBookmarkColumnsChange = useCallback((c: 1 | 2 | 3 | 4 | 5) => {
     setBookmarkColumns(c);
     localStorage.setItem('bm_bookmarkColumns', String(c));
   }, []);
 
-  const [collectionColumns, setCollectionColumns] = useState<1 | 2 | 3 | 4 | 5>(() => {
-    const saved = localStorage.getItem('bm_collectionColumns');
-    return (saved ? parseInt(saved, 10) : 3) as 1 | 2 | 3 | 4 | 5;
-  });
+  const [collectionColumns, setCollectionColumns] = useState<1 | 2 | 3 | 4 | 5>(() =>
+    parseColumns(localStorage.getItem('bm_collectionColumns'), 3)
+  );
 
   const handleCollectionColumnsChange = useCallback((c: 1 | 2 | 3 | 4 | 5) => {
     setCollectionColumns(c);
     localStorage.setItem('bm_collectionColumns', String(c));
   }, []);
 
-  // Auto-fallback to grid if leaving All Bookmarks while in folder view
-  // or if in popup mode (folder view is dashboard-only)
   useEffect(() => {
     if (viewMode === 'folder' && (activeCollection !== COLLECTION.ALL || !isDashboard)) {
       handleViewModeChange('grid');
@@ -110,6 +263,52 @@ function App() {
   }>({ type: 'none' });
 
   const { toasts, show: showToast, dismiss: dismissToast } = useToastQueue();
+  // Memoize so handler identities (and the memoized child components they're passed to)
+  // stay stable across renders — createT returns a fresh closure every call.
+  const t = useMemo(() => createT(state.settings.locale), [state.settings.locale]);
+
+  const openGDriveSettings = useCallback(() => {
+    // OAuth needs a full tab — popup closes when the auth window opens
+    if (!isDashboard) {
+      const url = chrome.runtime.getURL('index.html?target=dashboard&gdrive=connect');
+      void chrome.tabs.create({ url });
+      return;
+    }
+    setPrefsFocusGDrive(true);
+    setShowPrefs(true);
+  }, [isDashboard]);
+
+  const handleSyncGDrive = useCallback(async () => {
+    if (!gdriveStatus?.connected) {
+      openGDriveSettings();
+      return;
+    }
+    setGdriveBusy(true);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: 'BM:gdriveSync' } satisfies Message, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          if (response?.gdrive) setGdriveStatus(response.gdrive as GDriveStatus);
+          if (response?.error) {
+            reject(new Error(String(response.error)));
+            return;
+          }
+          void send({ type: 'BM:getState' });
+          resolve();
+        });
+      });
+      showToast(t('gdriveSyncSuccess'));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(msg.split('\n')[0] || t('gdriveSyncFailed'));
+      refreshGDriveStatus();
+    } finally {
+      setGdriveBusy(false);
+    }
+  }, [gdriveStatus?.connected, openGDriveSettings, refreshGDriveStatus, send, showToast, t]);
 
   const [currentTabBookmark, setCurrentTabBookmark] = useState<Bookmark | null>(null);
 
@@ -121,63 +320,102 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (isLoaded && !isDashboard && chrome?.tabs) {
-      chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-        const tab = tabs[0];
-        if (tab?.url && !tab.url.startsWith('chrome://')) {
-          const existing = state.bookmarks.find(b => b.url === tab.url);
-          setCurrentTabBookmark(existing || null);
-        }
-      });
+  const handleOpenSidePanel = useCallback(async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.windowId != null && chrome.sidePanel?.open) {
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+        window.close();
+        return;
+      }
+    } catch {
+      // fall through
     }
+    handleOpenDashboard();
+  }, [handleOpenDashboard]);
+
+  useEffect(() => {
+    if (!(isLoaded && !isDashboard && chrome?.tabs)) return;
+    let ignore = false;
+    chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+      if (ignore) return;
+      const tab = tabs[0];
+      if (tab?.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+        setCurrentTabBookmark(findBookmarkByUrl(state.bookmarks, tab.url) || null);
+      } else {
+        setCurrentTabBookmark(null);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [isLoaded, state.bookmarks, isDashboard]);
 
-  // ─── Derived State ─────────────────────────────────────────────────────────
-
-  const descendantsMap = useMemo(() => buildDescendantsMap(state.collections), [state.collections]);
+  const descendantsMap = useMemo(
+    () => buildDescendantsMap(state.collections),
+    [state.collections]
+  );
 
   const filtered = useMemo(() => {
     let result = state.bookmarks;
+    const parsed = parseSearchQuery(debouncedSearchQuery);
 
     if (activeCollection === COLLECTION.TRASH) {
       result = result.filter((b) => b.collectionId === COLLECTION.TRASH);
+    } else if (isSmartCollection(activeCollection)) {
+      result = filterBySmartCollection(result, activeCollection);
     } else {
       result = result.filter((b) => b.collectionId !== COLLECTION.TRASH);
       if (activeCollection === COLLECTION.UNSORTED) {
         result = result.filter((b) => b.collectionId === COLLECTION.UNSORTED);
       } else if (activeCollection !== COLLECTION.ALL) {
         const descendants = descendantsMap.get(activeCollection);
-        result = result.filter((b) => b.collectionId === activeCollection || !!descendants?.has(b.collectionId));
+        result = result.filter(
+          (b) => b.collectionId === activeCollection || !!descendants?.has(b.collectionId)
+        );
       }
     }
 
-    if (debouncedSearchQuery.trim()) {
-      const q = debouncedSearchQuery.toLowerCase();
-      result = result.filter(
-        (b) =>
-          b.title.toLowerCase().includes(q) ||
-          b.url.toLowerCase().includes(q) ||
-          b.tags.some((t) => t.toLowerCase().includes(q))
-      );
+    if (
+      debouncedSearchQuery.trim() ||
+      parsed.tags.length ||
+      parsed.site ||
+      parsed.inName ||
+      parsed.note
+    ) {
+      result = result.filter((b) => matchesSearch(b, parsed, state.collections));
     }
 
     if (activeTags.length > 0) {
-      result = result.filter((b) => activeTags.every(t => b.tags.includes(t)));
+      result = result.filter((b) => activeTags.every((tag) => b.tags.includes(tag)));
     }
 
     return result;
-  }, [state.bookmarks, activeCollection, debouncedSearchQuery, activeTags, descendantsMap]);
+  }, [
+    state.bookmarks,
+    state.collections,
+    activeCollection,
+    debouncedSearchQuery,
+    activeTags,
+    descendantsMap,
+  ]);
 
   const filteredBookmarks = useMemo(() => {
-    return filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
 
       switch (sortOrder) {
-        case 'oldest': return a.createdAt - b.createdAt;
-        case 'a-z': return a.title.localeCompare(b.title);
-        case 'z-a': return b.title.localeCompare(a.title);
+        case 'oldest':
+          return a.createdAt - b.createdAt;
+        case 'a-z':
+          return a.title.localeCompare(b.title);
+        case 'z-a':
+          return b.title.localeCompare(a.title);
+        case 'domain':
+          return getDomain(a.url).localeCompare(getDomain(b.url));
+        case 'updated':
+          return b.updatedAt - a.updatedAt;
         case 'newest':
         default:
           if (typeof a.order === 'number' && typeof b.order === 'number') {
@@ -204,6 +442,12 @@ function App() {
     counts[COLLECTION.UNSORTED] = unsortedCount;
     counts[COLLECTION.TRASH] = trashCount;
 
+    counts[SMART.PINNED] = filterBySmartCollection(state.bookmarks, SMART.PINNED).length;
+    counts[SMART.UNTAGGED] = filterBySmartCollection(state.bookmarks, SMART.UNTAGGED).length;
+    counts[SMART.NO_COVER] = filterBySmartCollection(state.bookmarks, SMART.NO_COVER).length;
+    counts[SMART.THIS_WEEK] = filterBySmartCollection(state.bookmarks, SMART.THIS_WEEK).length;
+    counts[SMART.BROKEN] = filterBySmartCollection(state.bookmarks, SMART.BROKEN).length;
+
     for (const c of state.collections) {
       const descendants = descendantsMap.get(c.id);
       let count = 0;
@@ -217,99 +461,139 @@ function App() {
 
   const allTags = useMemo(() => {
     const tags = new Set<string>();
-    state.bookmarks.forEach((b) => b.tags.forEach((t) => tags.add(t)));
+    state.bookmarks.forEach((b) => b.tags.forEach((tag) => tags.add(tag)));
     return Array.from(tags).sort();
   }, [state.bookmarks]);
 
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
-    filtered.forEach((b) => b.tags.forEach((t) => {
-      if (!activeTags.includes(t)) tags.add(t);
-    }));
+    filtered.forEach((b) =>
+      b.tags.forEach((tag) => {
+        if (!activeTags.includes(tag)) tags.add(tag);
+      })
+    );
     return Array.from(tags).sort();
   }, [filtered, activeTags]);
 
-  // ─── Save Handlers ─────────────────────────────────────────────────────────
-
-  const handleSaveBookmark = async (data: Omit<Bookmark, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (modal.initial?.id) {
-      await send({ type: 'BM:updateBookmark', payload: { ...data, id: modal.initial.id } });
-      showToast('Bookmark updated');
+  const handleSaveBookmark = async (
+    data: Omit<Bookmark, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
+  ) => {
+    if (data.id || modal.initial?.id) {
+      const id = data.id || modal.initial!.id!;
+      await send({
+        type: 'BM:updateBookmark',
+        payload: {
+          id,
+          url: data.url,
+          title: data.title,
+          note: data.note,
+          tags: data.tags,
+          favicon: data.favicon,
+          collectionId: data.collectionId,
+        },
+      });
+      showToast(t('bookmarkUpdated'));
     } else {
       await send({ type: 'BM:addBookmark', payload: data });
-      showToast('Bookmark added');
+      showToast(t('bookmarkAdded'));
     }
   };
 
-  const handleSaveCollection = async (data: { name: string; icon: CollectionIcon; color: CollectionColor }) => {
+  const handleSaveCollection = async (data: {
+    name: string;
+    icon: CollectionIcon;
+    color: CollectionColor;
+  }) => {
     const editing = modal.type === 'collection' && modal.existing;
     if (editing && modal.existing) {
-      await send({ type: 'BM:updateCollection', payload: { ...modal.existing, ...data, id: modal.existing.id } });
-      showToast('Collection updated');
+      await send({
+        type: 'BM:updateCollection',
+        payload: { ...modal.existing, ...data, id: modal.existing.id },
+      });
+      showToast(t('collectionUpdated'));
     } else {
       await send({ type: 'BM:addCollection', payload: data });
-      showToast(`Collection "${data.name}" created`);
+      showToast(`${t('collectionCreated')}: ${data.name}`);
     }
   };
 
-  const handleQuickAddCollection = async (name: string) => {
-    await send({ type: 'BM:addCollection', payload: { name, icon: 'folder', color: 'blue' } });
-    showToast(`Collection "${name}" created`);
+  const handleQuickAddCollection = async (name: string): Promise<string | undefined> => {
+    const beforeIds = new Set(state.collections.map((c) => c.id));
+    const res = await send({
+      type: 'BM:addCollection',
+      payload: { name, icon: 'folder', color: 'blue' },
+    });
+    showToast(`${t('collectionCreated')}: ${name}`);
+    const created = res.collections.find((c) => !beforeIds.has(c.id) && c.name === name);
+    if (created) return created.id;
+    // Fallback: newest with matching name
+    const matches = res.collections.filter((c) => c.name === name);
+    if (matches.length === 0) return undefined;
+    return matches.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b)).id;
   };
 
-  // ─── Action Handlers ───────────────────────────────────────────────────────
-
-  const handleDropBookmark = useCallback(async (bookmarkId: string, collectionId: string) => {
-    if (collectionId === COLLECTION.ALL) return;
-
-    const bookmark = state.bookmarks.find(b => b.id === bookmarkId);
-    if (!bookmark || bookmark.collectionId === collectionId) return;
-
-    if (collectionId === COLLECTION.TRASH) {
-      handleDeleteBookmark(bookmarkId, false);
-      return;
-    }
-
-    await send({ type: 'BM:updateBookmark', payload: { ...bookmark, collectionId } });
-    showToast('Bookmark moved');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.bookmarks, send, showToast]);
-
-  const handleDropCollection = useCallback(async (draggedId: string, targetId: string | null) => {
-    if (draggedId === targetId) return;
-
-    let current = targetId;
-    while (current) {
-      if (current === draggedId) {
-        showToast("Cannot move a folder into itself or its children");
+  const handleDropBookmark = useCallback(
+    async (bookmarkId: string, collectionId: string) => {
+      if (collectionId === COLLECTION.ALL) return;
+      const bookmark = state.bookmarks.find((b) => b.id === bookmarkId);
+      if (!bookmark || bookmark.collectionId === collectionId) return;
+      if (collectionId === COLLECTION.TRASH) {
+        await send({ type: 'BM:moveToTrash', id: bookmarkId });
+        showToast(t('movedToTrash'));
         return;
       }
-      const parentColl = state.collections.find(c => c.id === current);
-      current = parentColl?.parentId || null;
-    }
+      await send({ type: 'BM:updateBookmark', payload: { ...bookmark, collectionId } });
+      showToast('Bookmark moved');
+    },
+    [state.bookmarks, send, showToast, t]
+  );
 
-    const draggedColl = state.collections.find(c => c.id === draggedId);
-    if (!draggedColl) return;
+  const handleDropCollection = useCallback(
+    async (draggedId: string, targetId: string | null) => {
+      if (draggedId === targetId) return;
+      let current = targetId;
+      while (current) {
+        if (current === draggedId) {
+          showToast('Cannot move a folder into itself or its children');
+          return;
+        }
+        const parentColl = state.collections.find((c) => c.id === current);
+        current = parentColl?.parentId || null;
+      }
+      const draggedColl = state.collections.find((c) => c.id === draggedId);
+      if (!draggedColl) return;
+      await send({
+        type: 'BM:updateCollection',
+        payload: { ...draggedColl, parentId: targetId || undefined },
+      });
+      showToast('Collection moved');
+    },
+    [state.collections, send, showToast]
+  );
 
-    await send({ type: 'BM:updateCollection', payload: { ...draggedColl, parentId: targetId || undefined } });
-    showToast('Collection moved');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.collections, send, showToast]);
-
-  const handleTogglePinCollection = useCallback(async (id: string) => {
-    const collection = state.collections.find(c => c.id === id);
-    if (!collection) return;
-
-    await send({ type: 'BM:updateCollection', payload: { ...collection, pinned: !collection.pinned } });
-    showToast(collection.pinned ? 'Collection unpinned' : 'Collection pinned');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.collections, send, showToast]);
+  const handleTogglePinCollection = useCallback(
+    async (id: string) => {
+      const collection = state.collections.find((c) => c.id === id);
+      if (!collection) return;
+      await send({
+        type: 'BM:updateCollection',
+        payload: { ...collection, pinned: !collection.pinned },
+      });
+    },
+    [state.collections, send]
+  );
 
   const handleImport = async () => {
-    if (window.confirm('Do you want to import your current browser bookmarks? This will merge them with your existing bookmarks.')) {
-      showToast('Importing browser bookmarks...');
-      await send({ type: 'BM:importBrowser' });
-      showToast('Imported browser bookmarks');
+    if (window.confirm(t('confirmImport'))) {
+      showToast('…');
+      const res = (await send({ type: 'BM:importBrowser' })) as AppState & {
+        imported?: number;
+        importedCollections?: number;
+      };
+      showToast(
+        `${t('imported')}: ${res.imported ?? 0} bookmarks` +
+          (res.importedCollections ? `, ${res.importedCollections} folders` : '')
+      );
     }
   };
 
@@ -319,10 +603,10 @@ function App() {
       const data = {
         bookmarks: state.bookmarks,
         collections: state.collections,
+        settings: state.settings,
         exportDate: new Date().toISOString(),
-        version: '1.0'
+        version: '1.1',
       };
-
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -331,21 +615,29 @@ function App() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-
-      showToast('Bookmarks exported successfully');
+      showToast(t('exported'));
     } catch {
       showToast('Failed to export bookmarks');
     } finally {
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
+      if (url) URL.revokeObjectURL(url);
     }
-  }, [state.bookmarks, state.collections, showToast]);
+  }, [state.bookmarks, state.collections, state.settings, showToast, t]);
 
   const handleRefreshPreviews = async () => {
-    showToast('Refreshing missing previews...');
+    showToast('…');
     await send({ type: 'BM:refreshPreviews' });
-    showToast('Finished refreshing previews!');
+    showToast(t('previewsDone'));
+  };
+
+  const handleCheckBroken = async () => {
+    showToast('…');
+    await send({ type: 'BM:checkBrokenLinks' });
+    showToast(t('brokenCheckDone'));
+  };
+
+  const handleEmptyOldTrash = async () => {
+    await send({ type: 'BM:emptyOldTrash' });
+    showToast(t('trashCleaned'));
   };
 
   const handleImportJson = useCallback(() => {
@@ -359,8 +651,14 @@ function App() {
         const text = await file.text();
         const data = JSON.parse(text);
         if (data && Array.isArray(data.bookmarks) && Array.isArray(data.collections)) {
-          await send({ type: 'BM:importData', payload: { bookmarks: data.bookmarks, collections: data.collections } });
-          showToast('Imported bookmarks from JSON');
+          await send({
+            type: 'BM:importData',
+            payload: { bookmarks: data.bookmarks, collections: data.collections },
+          });
+          if (data.settings && typeof data.settings === 'object') {
+            await send({ type: 'BM:updateSettings', payload: data.settings });
+          }
+          showToast(t('imported'));
         } else {
           showToast('Invalid JSON format');
         }
@@ -369,52 +667,65 @@ function App() {
       }
     };
     input.click();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [send, showToast]);
+  }, [send, showToast, t]);
 
-  const handleTogglePin = useCallback(async (id: string) => {
-    await send({ type: 'BM:togglePin', id });
-  }, [send]);
+  const handleTogglePin = useCallback(
+    async (id: string) => {
+      await send({ type: 'BM:togglePin', id });
+    },
+    [send]
+  );
 
   const handleEditBookmark = useCallback((bookmark: Bookmark) => {
     setModal({ type: 'add', initial: bookmark });
   }, []);
 
-  const handleDeleteBookmark = useCallback(async (id: string, isFromTrash: boolean) => {
-    if (isFromTrash) {
-      if (!confirm('Permanently delete this bookmark? This cannot be undone.')) return;
-      await send({ type: 'BM:deleteBookmark', id });
-      showToast('Bookmark permanently deleted');
-    } else {
-      const bookmark = state.bookmarks.find((b) => b.id === id);
-      await send({ type: 'BM:moveToTrash', id });
-      showToast('Moved to trash', bookmark ? {
-        label: 'Undo',
-        onClick: async () => {
-          await send({ type: 'BM:updateBookmark', payload: bookmark });
-          showToast('Bookmark restored');
-        },
-      } : undefined);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.bookmarks, send, showToast]);
+  const handleDeleteBookmark = useCallback(
+    async (id: string, isFromTrash: boolean) => {
+      if (isFromTrash) {
+        if (!confirm(t('confirmDelete'))) return;
+        await send({ type: 'BM:deleteBookmark', id });
+        showToast(t('permanentlyDeleted'));
+      } else {
+        const bookmark = state.bookmarks.find((b) => b.id === id);
+        await send({ type: 'BM:moveToTrash', id });
+        showToast(
+          t('movedToTrash'),
+          bookmark
+            ? {
+                label: t('undo'),
+                onClick: async () => {
+                  await send({ type: 'BM:updateBookmark', payload: bookmark });
+                  showToast(t('restored'));
+                },
+              }
+            : undefined
+        );
+      }
+    },
+    [state.bookmarks, send, showToast, t]
+  );
 
-  const handleRestoreBookmark = useCallback(async (id: string) => {
-    await send({ type: 'BM:restoreFromTrash', id });
-    showToast('Bookmark restored');
-  }, [send, showToast]);
+  const handleRestoreBookmark = useCallback(
+    async (id: string) => {
+      await send({ type: 'BM:restoreFromTrash', id });
+      showToast(t('restored'));
+    },
+    [send, showToast, t]
+  );
 
   const handleSelectAll = useCallback(() => {
-    setSelectedIds(prev => {
-      if (prev.size === filteredBookmarks.length) {
-        return new Set();
-      }
-      return new Set(filteredBookmarks.map(b => b.id));
+    setSelectedIds((prev) => {
+      // Compare by membership, not size — a stale selection of equal size (containing
+      // now-hidden ids after a filter change) shouldn't read as "all selected".
+      const allSelected =
+        filteredBookmarks.length > 0 && filteredBookmarks.every((b) => prev.has(b.id));
+      return allSelected ? new Set() : new Set(filteredBookmarks.map((b) => b.id));
     });
   }, [filteredBookmarks]);
 
   const handleToggleSelect = useCallback((id: string, selected: boolean) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
       if (selected) next.add(id);
       else next.delete(id);
@@ -422,22 +733,38 @@ function App() {
     });
   }, []);
 
-  const handleReorder = useCallback(async (dragId: string, dropId: string) => {
-    const dragIndex = state.bookmarks.findIndex(b => b.id === dragId);
-    const dropIndex = state.bookmarks.findIndex(b => b.id === dropId);
-    if (dragIndex === -1 || dropIndex === -1) return;
+  const handleReorder = useCallback(
+    async (dragId: string, dropId: string, position: 'before' | 'after' = 'before') => {
+      // Reorder within the currently VISIBLE list — the drag/drop ids come from there.
+      // Rewriting `order` against the raw state.bookmarks array (which includes trash and
+      // other collections) would drop items at the wrong position whenever a filter, search
+      // or non-default sort is active.
+      const visible = filteredBookmarks;
+      const dragIndex = visible.findIndex((b) => b.id === dragId);
+      if (dragIndex === -1 || !visible.some((b) => b.id === dropId)) return;
 
-    const reordered = [...state.bookmarks];
-    const [removed] = reordered.splice(dragIndex, 1);
-    reordered.splice(dropIndex, 0, removed);
-    const nextBookmarks = reordered.map((bookmark, index) => ({ ...bookmark, order: index }));
+      const reorderedVisible = [...visible];
+      const [removed] = reorderedVisible.splice(dragIndex, 1);
+      // Insert relative to the drop target, honoring which half of the row was dropped on.
+      let target = reorderedVisible.findIndex((b) => b.id === dropId);
+      if (target === -1) return;
+      if (position === 'after') target += 1;
+      reorderedVisible.splice(target, 0, removed);
 
-    await send({ type: 'BM:saveBookmarks', payload: nextBookmarks });
-  }, [state.bookmarks, send]);
+      // Assign sequential order only to the visible subset; leave off-screen bookmarks as-is.
+      const orderMap = new Map<string, number>();
+      reorderedVisible.forEach((b, i) => orderMap.set(b.id, i));
+      const nextBookmarks = state.bookmarks.map((b) =>
+        orderMap.has(b.id) ? { ...b, order: orderMap.get(b.id)! } : b
+      );
+      await send({ type: 'BM:saveBookmarks', payload: nextBookmarks });
+    },
+    [filteredBookmarks, state.bookmarks, send]
+  );
 
   const handleBulkDelete = useCallback(async () => {
     if (activeCollection === COLLECTION.TRASH) {
-      if (confirm(`Are you sure you want to permanently delete ${selectedIds.size} bookmarks?`)) {
+      if (confirm(t('confirmBulkDelete'))) {
         await send({ type: 'BM:bulkDelete', ids: Array.from(selectedIds) });
         setSelectedIds(new Set());
       }
@@ -445,20 +772,58 @@ function App() {
       const bookmarksToRestore = state.bookmarks.filter((b) => selectedIds.has(b.id));
       await send({ type: 'BM:bulkMoveToTrash', ids: Array.from(selectedIds) });
       setSelectedIds(new Set());
-      showToast(`${bookmarksToRestore.length} bookmarks moved to trash`, bookmarksToRestore.length > 0 ? {
-        label: 'Undo',
-        onClick: async () => {
-          for (const bookmark of bookmarksToRestore) {
-            await send({ type: 'BM:updateBookmark', payload: bookmark });
-          }
-          showToast('Bookmarks restored');
-        },
-      } : undefined);
+      showToast(
+        `${bookmarksToRestore.length} ${t('movedToTrash')}`,
+        bookmarksToRestore.length > 0
+          ? {
+              label: t('undo'),
+              onClick: async () => {
+                for (const bookmark of bookmarksToRestore) {
+                  await send({ type: 'BM:updateBookmark', payload: bookmark });
+                }
+                showToast(t('restored'));
+              },
+            }
+          : undefined
+      );
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCollection, selectedIds, state.bookmarks, send, showToast]);
+  }, [activeCollection, selectedIds, state.bookmarks, send, showToast, t]);
 
-  // Reset selection when searching (collection reset handled in handleSelectCollection)
+  const handleBulkMove = useCallback(
+    async (collectionId: string) => {
+      await send({
+        type: 'BM:bulkMove',
+        payload: { ids: Array.from(selectedIds), collectionId },
+      });
+      setSelectedIds(new Set());
+      setIsSelectMode(false);
+      showToast('Moved');
+    },
+    [selectedIds, send, showToast]
+  );
+
+  const handleBulkTag = useCallback(
+    async (tags: string[]) => {
+      await send({
+        type: 'BM:bulkTag',
+        payload: { ids: Array.from(selectedIds), add: tags },
+      });
+      showToast('Tags added');
+    },
+    [selectedIds, send, showToast]
+  );
+
+  const handleBulkPin = useCallback(
+    async (pinned: boolean) => {
+      await send({
+        type: 'BM:bulkPin',
+        payload: { ids: Array.from(selectedIds), pinned },
+      });
+      showToast(pinned ? t('pin') : t('unpin'));
+    },
+    [selectedIds, send, showToast, t]
+  );
+
   useEffect(() => {
     setSelectedIds(new Set());
     setIsSelectMode(false);
@@ -478,28 +843,45 @@ function App() {
     });
   }, []);
 
-  const handleToggleTag = useCallback((t: string) => {
-    setActiveTags(prev =>
-      prev.includes(t) ? prev.filter(tag => tag !== t) : [...prev, t]
+  const handleToggleTag = useCallback((tag: string) => {
+    setActiveTags((prev) =>
+      prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]
     );
   }, []);
 
-  const handleTagClick = useCallback((t: string) => {
-    setActiveTags(prev => prev.includes(t) ? prev : [...prev, t]);
+  const handleTagClick = useCallback((tag: string) => {
+    setActiveTags((prev) => (prev.includes(tag) ? prev : [...prev, tag]));
   }, []);
 
-  const handleEditCollectionById = useCallback((id: string) => {
-    const collection = state.collections.find(c => c.id === id);
-    if (collection) {
-      setModal({ type: 'collection', existing: collection });
-    }
-  }, [state.collections]);
+  const handleEditCollectionById = useCallback(
+    (id: string) => {
+      const collection = state.collections.find((c) => c.id === id);
+      if (collection) setModal({ type: 'collection', existing: collection });
+    },
+    [state.collections]
+  );
+
+  const handleUpdateSettings = async (patch: Partial<AppSettings>) => {
+    await send({ type: 'BM:updateSettings', payload: patch });
+    showToast(t('settings'));
+  };
 
   if (!isLoaded) {
+    // A Chrome popup is sized from its content when it opens. The default
+    // popup ends up as QuickSave (380px wide), so paint a matching skeleton
+    // first. Painting the 800×600 dashboard skeleton here opens the popup too
+    // wide, leaving a gray gutter on one side.
+    if (!isDashboard && !forceLibrary) {
+      return <QuickSaveSkeleton />;
+    }
     return (
-      <div className={`flex bg-zinc-100 text-zinc-900 overflow-hidden font-sans ${isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'}`}>
+      <div
+        className={`flex bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden font-sans ${
+          isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'
+        }`}
+      >
         <SidebarSkeleton />
-        <main className="flex-1 flex flex-col min-w-0 bg-white">
+        <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900">
           <SearchBarSkeleton />
           <div className="flex-1 overflow-hidden">
             <BookmarkListSkeleton count={6} />
@@ -509,8 +891,68 @@ function App() {
     );
   }
 
+  if (showQuickSave) {
+    return (
+      <>
+        <QuickSave
+          bookmarks={state.bookmarks}
+          collections={state.collections}
+          settings={state.settings}
+          allTags={allTags}
+          onSave={handleSaveBookmark}
+          onOpenLibrary={() => setForceLibrary(true)}
+          onOpenDashboard={handleOpenDashboard}
+          onOpenPreferences={() => {
+            setPrefsFocusGDrive(false);
+            setShowPrefs(true);
+          }}
+          onOpenGDrive={openGDriveSettings}
+          onSyncGDrive={() => void handleSyncGDrive()}
+          gdrive={gdriveUi}
+          onQuickAddCollection={handleQuickAddCollection}
+        />
+        {showPrefs && (
+          <Suspense fallback={<ModalSkeleton />}>
+            <SettingsModal
+              settings={state.settings}
+              collections={state.collections}
+              onSave={handleUpdateSettings}
+              onClose={() => {
+                setShowPrefs(false);
+                setPrefsFocusGDrive(false);
+              }}
+              onCheckBroken={handleCheckBroken}
+              onEmptyOldTrash={handleEmptyOldTrash}
+              onGDriveStateChange={() => {
+                void send({ type: 'BM:getState' });
+                refreshGDriveStatus();
+              }}
+              onToast={(msg) => showToast(msg)}
+              autoConnectGDrive={prefsFocusGDrive}
+            />
+          </Suspense>
+        )}
+        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 items-end pointer-events-none">
+          {toasts.map((toastItem) => (
+            <div
+              key={toastItem.id}
+              className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 animate-slide-up"
+              role="status"
+            >
+              {toastItem.msg}
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
   return (
-    <div className={`flex bg-zinc-100 text-zinc-900 overflow-hidden font-sans ${isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'}`}>
+    <div
+      className={`flex bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden font-sans ${
+        isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'
+      }`}
+    >
       <Sidebar
         collections={state.collections}
         activeCollection={activeCollection}
@@ -521,17 +963,27 @@ function App() {
         onImportJson={handleImportJson}
         onExport={handleExportData}
         onRefreshPreviews={handleRefreshPreviews}
+        onCheckBroken={handleCheckBroken}
+        onOpenPreferences={() => {
+          setPrefsFocusGDrive(false);
+          setShowPrefs(true);
+        }}
+        onOpenGDrive={openGDriveSettings}
+        onSyncGDrive={() => void handleSyncGDrive()}
+        gdrive={gdriveUi}
         activeTags={activeTags}
         availableTags={availableTags}
         onToggleTag={handleToggleTag}
         onOpenDashboard={!isDashboard ? handleOpenDashboard : undefined}
+        onOpenSidePanel={!isDashboard ? handleOpenSidePanel : undefined}
         onEditCollection={handleEditCollectionById}
         onTogglePinCollection={handleTogglePinCollection}
         onDropBookmark={handleDropBookmark}
         onDropCollection={handleDropCollection}
+        locale={state.settings.locale}
       />
 
-      <main className="flex-1 flex flex-col min-w-0 bg-white">
+      <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900">
         <SearchBar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -539,15 +991,26 @@ function App() {
           onViewModeChange={handleViewModeChange}
           layoutScope={viewMode === 'folder' ? 'collection' : 'bookmark'}
           layoutColumns={viewMode === 'folder' ? collectionColumns : bookmarkColumns}
-          onLayoutColumnsChange={viewMode === 'folder' ? handleCollectionColumnsChange : handleBookmarkColumnsChange}
+          onLayoutColumnsChange={
+            viewMode === 'folder' ? handleCollectionColumnsChange : handleBookmarkColumnsChange
+          }
           allowFolderView={activeCollection === COLLECTION.ALL && isDashboard}
           onAdd={() => setModal({ type: 'add' })}
           currentTabBookmarked={!!currentTabBookmark}
-          onEditCurrent={currentTabBookmark ? () => handleEditBookmark(currentTabBookmark) : undefined}
+          onEditCurrent={
+            currentTabBookmark ? () => handleEditBookmark(currentTabBookmark) : undefined
+          }
           selectedCount={selectedIds.size}
-          isAllSelected={selectedIds.size > 0 && selectedIds.size === filteredBookmarks.length && filteredBookmarks.length > 0}
+          isAllSelected={
+            filteredBookmarks.length > 0 &&
+            filteredBookmarks.every((b) => selectedIds.has(b.id))
+          }
           onSelectAll={handleSelectAll}
           onBulkDelete={handleBulkDelete}
+          onBulkMove={handleBulkMove}
+          onBulkTag={handleBulkTag}
+          onBulkPin={handleBulkPin}
+          collections={state.collections}
           isTrashView={activeCollection === COLLECTION.TRASH}
           sortOrder={sortOrder}
           onSortChange={setSortOrder}
@@ -560,8 +1023,13 @@ function App() {
             setSearchQuery('');
             setActiveTags([]);
           }}
+          locale={state.settings.locale}
         />
-        <div className={`flex-1 overflow-hidden relative transition-opacity duration-150 ${isPending ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
+        <div
+          className={`flex-1 overflow-hidden relative transition-opacity duration-150 ${
+            isPending ? 'opacity-60 pointer-events-none' : 'opacity-100'
+          }`}
+        >
           {viewMode === 'folder' && activeCollection === COLLECTION.ALL ? (
             <FolderView
               collections={state.collections}
@@ -597,7 +1065,7 @@ function App() {
               onEdit={handleEditBookmark}
               onDelete={handleDeleteBookmark}
               onRestore={handleRestoreBookmark}
-              isTrashView={false}
+              isTrashView={activeCollection === COLLECTION.TRASH}
               onTogglePin={handleTogglePin}
               selectedIds={selectedIds}
               onToggleSelect={handleToggleSelect}
@@ -610,7 +1078,6 @@ function App() {
         </div>
       </main>
 
-      {/* Modals */}
       <Suspense fallback={<ModalSkeleton />}>
         {modal.type === 'add' && (
           <AddBookmarkModal
@@ -630,41 +1097,65 @@ function App() {
             collections={state.collections}
             onSave={handleSaveCollection}
             onDelete={async (id: string) => {
-              if (confirm('Are you sure you want to delete this collection and its sub-collections? Bookmarks will be moved to Unsorted.')) {
+              if (confirm(t('confirmDeleteCollection'))) {
                 await send({ type: 'BM:deleteCollection', id });
-                showToast('Collection deleted');
-                if (activeCollection === id) {
-                  setActiveCollection(COLLECTION.ALL);
-                }
+                showToast(t('collectionDeleted'));
+                if (activeCollection === id) setActiveCollection(COLLECTION.ALL);
                 setModal({ type: 'none' });
               }
             }}
             onClose={() => setModal({ type: 'none' })}
           />
         )}
+
+        {showPrefs && (
+          <SettingsModal
+            settings={state.settings}
+            collections={state.collections}
+            onSave={handleUpdateSettings}
+            onClose={() => {
+              setShowPrefs(false);
+              setAutoGdriveConnect(false);
+              setPrefsFocusGDrive(false);
+              // Clean deep-link query so refresh doesn't re-trigger connect
+              if (params.get('gdrive') === 'connect') {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('gdrive');
+                window.history.replaceState({}, '', url.toString());
+              }
+            }}
+            onCheckBroken={handleCheckBroken}
+            onEmptyOldTrash={handleEmptyOldTrash}
+            onGDriveStateChange={() => {
+              void send({ type: 'BM:getState' });
+              refreshGDriveStatus();
+            }}
+            onToast={(msg) => showToast(msg)}
+            autoConnectGDrive={autoGdriveConnect || prefsFocusGDrive}
+          />
+        )}
       </Suspense>
 
-      {/* Toast stack */}
       <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 items-end pointer-events-none">
-        {toasts.map((t) => (
+        {toasts.map((toastItem) => (
           <div
-            key={t.id}
-            className="pointer-events-auto bg-white text-zinc-900 border border-zinc-200 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 animate-slide-up"
+            key={toastItem.id}
+            className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 animate-slide-up"
             role="status"
           >
             <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-            {t.msg}
-            {t.action && (
+            {toastItem.msg}
+            {toastItem.action && (
               <button
                 onClick={async () => {
-                  const action = t.action;
+                  const action = toastItem.action;
                   if (!action) return;
-                  dismissToast(t.id);
+                  dismissToast(toastItem.id);
                   await action.onClick();
                 }}
-                className="ml-2 text-brand-600 hover:text-brand-700 font-semibold"
+                className="ml-2 text-brand-600 dark:text-brand-400 hover:text-brand-700 font-semibold"
               >
-                {t.action.label}
+                {toastItem.action.label}
               </button>
             )}
           </div>

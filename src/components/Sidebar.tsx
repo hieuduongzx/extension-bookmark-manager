@@ -19,16 +19,26 @@ import {
   Download,
   Upload,
   RefreshCw,
-  X,
   Maximize2,
   Edit2,
   Pin,
   ChevronRight,
-  ChevronDown
+  X,
+  ImageOff,
+  Calendar,
+  Link2Off,
+  Tags,
+  PanelRight,
+  Cloud,
+  CloudOff,
+  Loader2,
 } from 'lucide-react';
-import type { Collection, CollectionIcon } from '../types';
-import { COLLECTION } from '../types';
+import type { Collection, CollectionIcon, LocaleCode } from '../types';
+import { COLLECTION, SMART } from '../types';
 import { buildCollectionTree, flattenCollectionTree } from '../utils';
+import { createT } from '../i18n';
+import { useEscapeKey } from '../hooks';
+import type { GDriveUiStatus } from '../gdrive';
 
 interface SidebarProps {
   collections: Collection[];
@@ -40,14 +50,22 @@ interface SidebarProps {
   onImportJson: () => void;
   onExport?: () => void;
   onRefreshPreviews?: () => void;
+  onCheckBroken?: () => void;
+  onOpenPreferences?: () => void;
+  /** Open preferences focused on Google Drive / run sync-connect flow */
+  onOpenGDrive?: () => void;
+  onSyncGDrive?: () => void;
+  gdrive?: GDriveUiStatus | null;
   activeTags?: string[];
   availableTags?: string[];
   onToggleTag?: (tag: string) => void;
   onOpenDashboard?: () => void;
+  onOpenSidePanel?: () => void;
   onEditCollection?: (id: string) => void;
   onTogglePinCollection?: (id: string) => void;
   onDropBookmark?: (bookmarkId: string, collectionId: string) => void;
   onDropCollection?: (draggedId: string, targetId: string | null) => void;
+  locale?: LocaleCode;
 }
 
 const getIcon = (iconName: CollectionIcon) => {
@@ -67,7 +85,7 @@ const getIcon = (iconName: CollectionIcon) => {
 };
 
 const getColorClass = (colorName: string, isActive: boolean) => {
-  if (isActive) return 'text-zinc-900';
+  if (isActive) return 'text-brand-700 dark:text-brand-300';
   switch (colorName) {
     case 'blue': return 'text-blue-500';
     case 'indigo': return 'text-indigo-500';
@@ -92,15 +110,17 @@ const SIDEBAR_DEFAULT_WIDTH = 208;
 const getStoredCollapseState = () => {
   try {
     const stored = localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY);
-    if (!stored) return { collections: false, tags: false };
+    if (!stored) return { collections: false, tags: true, smart: true };
 
-    const parsed = JSON.parse(stored) as Partial<{ collections: boolean; tags: boolean }>;
+    const parsed = JSON.parse(stored) as Partial<{ collections: boolean; tags: boolean; smart: boolean }>;
     return {
       collections: Boolean(parsed.collections),
       tags: Boolean(parsed.tags),
+      // Smart views are secondary navigation, so keep them compact by default.
+      smart: parsed.smart ?? true,
     };
   } catch {
-    return { collections: false, tags: false };
+    return { collections: false, tags: true, smart: true };
   }
 };
 
@@ -160,13 +180,12 @@ const NavItem = memo(({
   const [isDragOver, setIsDragOver] = useState(false);
 
   return (
-    <button
+    <div
       draggable={isCustom}
       onDragStart={isCustom ? (e) => {
         e.dataTransfer.setData('application/collection-id', id);
         e.dataTransfer.effectAllowed = 'move';
       } : undefined}
-      onClick={() => onSelect(id)}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('application/bookmark-id') ||
             e.dataTransfer.types.includes('application/collection-id')) {
@@ -189,76 +208,78 @@ const NavItem = memo(({
           }
         }
       }}
-      style={{ paddingLeft: `${12 + depth * 20}px` }}
-      className={`group relative w-full flex items-center justify-between pr-2.5 h-[34px] rounded-lg transition-all duration-150 ease-out text-[13px] ${
-        isActive
-          ? 'bg-white text-zinc-900 font-semibold shadow-sm border border-zinc-200/60'
-          : 'text-zinc-600 hover:bg-white/70 hover:text-zinc-900'
-      } ${isDragOver ? 'ring-2 ring-brand-400 ring-inset bg-brand-50' : ''}`}
+      className="group relative h-8"
     >
-      <div className="flex items-center gap-2 min-w-0 pointer-events-none">
-        {isCustom && (
-          <div
-            className={`w-4 h-4 flex items-center justify-center shrink-0 rounded transition-colors pointer-events-auto ${
-              hasChildren ? 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-200/80 cursor-pointer' : 'opacity-0'
-            }`}
-            onClick={(e) => {
-              if (hasChildren && onToggleExpand) {
-                e.stopPropagation();
-                onToggleExpand();
-              }
-            }}
-          >
-            {hasChildren && (
-              <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
-            )}
-          </div>
-        )}
+      <button
+        type="button"
+        onClick={() => onSelect(id)}
+        aria-current={isActive ? 'page' : undefined}
+        style={{ paddingLeft: `${isCustom ? 30 + depth * 20 : 12}px` }}
+        className={`w-full h-full flex items-center justify-between rounded-md pr-2.5 transition-colors duration-150 ease-out text-[13px] ${
+        isActive
+          ? 'bg-brand-50 text-brand-800 font-semibold dark:bg-brand-950/55 dark:text-brand-100'
+          : 'text-zinc-600 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/80 dark:hover:text-zinc-50'
+      } ${isDragOver ? 'ring-2 ring-brand-400 ring-inset bg-brand-50 dark:bg-brand-950/40' : ''}`}
+      >
+        <div className="flex items-center gap-2 min-w-0">
         <Icon className={`w-4 h-4 shrink-0 transition-colors duration-200 ${getColorClass(color, isActive)} ${!isCustom ? 'ml-1' : ''}`} />
         <span className="truncate transition-colors duration-200">{label}</span>
       </div>
 
-      <div className="grid justify-items-end items-center shrink-0 ml-2 pointer-events-none">
-        {isCustom && (
-          <div className="col-start-1 row-start-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-0.5 group-hover:translate-y-0 pointer-events-auto z-10">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePinCollection?.(id);
-              }}
-              className={`p-1 rounded transition-colors ${
-                isPinned ? 'text-brand-600 hover:text-brand-700 hover:bg-brand-50' : 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200'
-              }`}
-              title={isPinned ? 'Unpin Collection' : 'Pin Collection'}
-            >
-              <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-current' : ''}`} />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEditCollection?.(id);
-              }}
-              className="p-1 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200 rounded transition-colors"
-              title="Edit Collection"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-        <div className={`col-start-1 row-start-1 flex items-center gap-1 transition-all duration-200 ${isCustom ? 'group-hover:opacity-0 group-hover:-translate-y-0.5' : ''}`}>
+        <div className={`flex items-center gap-1 transition-all duration-200 ${isCustom ? 'group-hover:opacity-0 group-hover:-translate-y-0.5' : ''}`}>
           {isCustom && isPinned && (
             <Pin className="w-3 h-3 fill-current text-brand-500" />
           )}
           <span
             className={`text-[11px] font-semibold px-1.5 rounded-full transition-colors duration-150 min-w-[22px] h-[18px] inline-flex items-center justify-center tabular-nums ${
-              isActive ? 'text-zinc-600 bg-zinc-100' : 'text-zinc-500 bg-zinc-200/60 group-hover:bg-zinc-200'
+              isActive
+                ? 'text-brand-700 bg-brand-100/80 dark:text-brand-200 dark:bg-brand-900/50'
+                : 'text-zinc-500 bg-zinc-200/60 group-hover:bg-zinc-200 dark:text-zinc-400 dark:bg-zinc-800 dark:group-hover:bg-zinc-700'
             }`}
           >
             {count}
           </span>
         </div>
-      </div>
-    </button>
+      </button>
+
+      {isCustom && hasChildren && (
+        <button
+          type="button"
+          onClick={() => onToggleExpand?.()}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${label}`}
+          aria-expanded={isExpanded}
+          style={{ left: `${10 + depth * 20}px` }}
+          className="absolute top-1.5 flex h-5 w-5 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200/80 hover:text-zinc-700 dark:hover:bg-zinc-700/80 dark:hover:text-zinc-200"
+        >
+          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+        </button>
+      )}
+
+      {isCustom && (
+        <div className="absolute right-2 top-1/2 z-10 flex -translate-y-1/2 gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            onClick={() => onTogglePinCollection?.(id)}
+            className={`p-1 rounded transition-colors ${
+              isPinned
+                ? 'text-brand-600 hover:text-brand-700 hover:bg-brand-50 dark:text-brand-400 dark:hover:text-brand-300 dark:hover:bg-brand-950/50'
+                : 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200 dark:hover:text-zinc-100 dark:hover:bg-zinc-700'
+            }`}
+            title={isPinned ? 'Unpin Collection' : 'Pin Collection'}
+          >
+            <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-current' : ''}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onEditCollection?.(id)}
+            className="p-1 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200 dark:hover:text-zinc-100 dark:hover:bg-zinc-700 rounded transition-colors"
+            title="Edit Collection"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 });
 
@@ -298,10 +319,10 @@ const TagsSection = memo(({
 
   return (
     <div>
-      <div className="flex items-center justify-between px-3 mb-1.5">
+      <div className="flex items-center justify-between px-2.5 mb-1">
         <button
           onClick={onToggleCollapsed}
-          className="flex items-center gap-1.5 py-1.5 w-full text-left text-[12px] font-semibold text-zinc-600 hover:text-zinc-700 transition-colors"
+          className="flex items-center gap-1.5 py-1.5 w-full text-left text-[12px] font-semibold text-zinc-600 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
           aria-expanded={!isCollapsed}
         >
           <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`} />
@@ -314,7 +335,7 @@ const TagsSection = memo(({
         </button>
       </div>
       {!isCollapsed && (
-        <div className="flex flex-col gap-2 px-3">
+        <div className="flex flex-col gap-2 px-2.5">
           {availableTags.length > 8 && (
             <div className="relative">
               <input
@@ -323,13 +344,13 @@ const TagsSection = memo(({
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter tags..."
                 aria-label="Filter tags"
-                className="w-full h-6 pl-2 pr-6 bg-zinc-50 border border-zinc-200 rounded text-[11px] text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:border-brand-500 focus:bg-white transition-colors"
+                className="w-full h-6 pl-2 pr-6 bg-zinc-50 border border-zinc-200 rounded text-[11px] text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:border-brand-500 focus:bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900 transition-colors"
               />
               {filter && (
                 <button
                   type="button"
                   onClick={() => setFilter('')}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-700 rounded"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded"
                   aria-label="Clear tag filter"
                 >
                   <X className="w-3 h-3" />
@@ -342,7 +363,7 @@ const TagsSection = memo(({
               <button
                 key={`active-${tag}`}
                 onClick={() => onToggleTag(tag)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border bg-brand-50 border-brand-200 text-brand-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 group"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border bg-brand-50 border-brand-200 text-brand-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 dark:bg-brand-950/50 dark:border-brand-800 dark:text-brand-300 dark:hover:bg-red-950/40 dark:hover:border-red-900 dark:hover:text-red-400 group"
                 title="Remove tag filter"
               >
                 <Hash className="w-3 h-3 opacity-70 group-hover:hidden" />
@@ -354,7 +375,7 @@ const TagsSection = memo(({
               <button
                 key={`avail-${tag}`}
                 onClick={() => onToggleTag(tag)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:bg-zinc-800/60 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 title="Filter by this tag"
               >
                 <Hash className="w-3 h-3 opacity-70" />
@@ -366,7 +387,7 @@ const TagsSection = memo(({
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="self-start text-[11px] text-brand-600 hover:text-brand-700 font-medium px-1"
+              className="self-start text-[11px] text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 font-medium px-1"
             >
               Show {hiddenCount} more
             </button>
@@ -375,7 +396,7 @@ const TagsSection = memo(({
             <button
               type="button"
               onClick={() => setShowAll(false)}
-              className="self-start text-[11px] text-zinc-500 hover:text-zinc-700 font-medium px-1"
+              className="self-start text-[11px] text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 font-medium px-1"
             >
               Show less
             </button>
@@ -403,18 +424,27 @@ export function Sidebar({
   onImportJson,
   onExport,
   onRefreshPreviews,
+  onCheckBroken,
+  onOpenPreferences,
+  onOpenGDrive,
+  onSyncGDrive,
+  gdrive = null,
   activeTags = [],
   availableTags = [],
   onToggleTag,
   onOpenDashboard,
+  onOpenSidePanel,
   onEditCollection,
   onTogglePinCollection,
   onDropBookmark,
-  onDropCollection
+  onDropCollection,
+  locale = 'en',
 }: SidebarProps) {
+  const t = createT(locale);
   const [showSettings, setShowSettings] = useState(false);
   const [isCollectionsCollapsed, setIsCollectionsCollapsed] = useState(() => getStoredCollapseState().collections);
   const [isTagsCollapsed, setIsTagsCollapsed] = useState(() => getStoredCollapseState().tags);
+  const [isSmartCollapsed, setIsSmartCollapsed] = useState(() => getStoredCollapseState().smart);
   const [width, setWidth] = useState<number>(() => getStoredSidebarWidth());
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -453,12 +483,17 @@ export function Sidebar({
     setWidth(SIDEBAR_DEFAULT_WIDTH);
   }, []);
 
+  const adjustWidth = useCallback((delta: number) => {
+    setWidth((w) => Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, w + delta)));
+  }, []);
+
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSE_STORAGE_KEY, JSON.stringify({
       collections: isCollectionsCollapsed,
       tags: isTagsCollapsed,
+      smart: isSmartCollapsed,
     }));
-  }, [isCollectionsCollapsed, isTagsCollapsed]);
+  }, [isCollectionsCollapsed, isTagsCollapsed, isSmartCollapsed]);
 
   // Close settings menu when clicking outside
   useEffect(() => {
@@ -467,6 +502,9 @@ export function Sidebar({
     window.addEventListener('click', handleClick);
     return () => window.removeEventListener('click', handleClick);
   }, [showSettings]);
+
+  // …and on Escape (top-most dismissible layer wins).
+  useEscapeKey(() => setShowSettings(false), showSettings);
 
   const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set());
 
@@ -531,43 +569,55 @@ export function Sidebar({
     onSelectCollection(id);
   }, [onSelectCollection]);
 
+  const isSmartViewActive = activeCollection === SMART.PINNED ||
+    activeCollection === SMART.UNTAGGED ||
+    activeCollection === SMART.NO_COVER ||
+    activeCollection === SMART.THIS_WEEK ||
+    activeCollection === SMART.BROKEN;
+  const isSmartExpanded = !isSmartCollapsed || isSmartViewActive;
+
   return (
     <div
       ref={sidebarRef}
       style={{ width: `${width}px` }}
-      className="relative bg-zinc-50 border-r border-zinc-200/80 flex flex-col h-full z-10 shrink-0"
+      className="relative bg-zinc-100/70 dark:bg-zinc-950 border-r border-zinc-200/80 dark:border-zinc-800 flex flex-col h-full z-10 shrink-0"
     >
-      <div className="px-4 pt-4 pb-3 shrink-0 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+      <div className="px-3.5 py-3 shrink-0 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800">
+        <div className="flex items-center gap-2">
           <img
             src={chrome.runtime.getURL("public/icons/icon-128.png")}
             alt="Bookmark Manager"
-            className="w-7 h-7 rounded-md shadow-glow"
+            className="w-6 h-6 rounded-md"
           />
-          <h1 className="text-[14px] font-bold tracking-tight text-zinc-900">Bookmarks</h1>
+          <h1 className="text-[13px] font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">{t('appName')}</h1>
         </div>
-        {onOpenDashboard && (
-          <button
-            onClick={onOpenDashboard}
-            className="btn-icon-sm"
-            title="Open Full Dashboard"
-          >
-            <Maximize2 className="w-4 h-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-0.5">
+          {onOpenSidePanel && (
+            <button
+              onClick={onOpenSidePanel}
+              className="btn-icon-sm dark:hover:bg-zinc-800"
+              title={t('openSidePanel')}
+            >
+              <PanelRight className="w-4 h-4" />
+            </button>
+          )}
+          {onOpenDashboard && (
+            <button
+              onClick={onOpenDashboard}
+              className="btn-icon-sm dark:hover:bg-zinc-800"
+              title={t('openDashboard')}
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-4 space-y-5">
-        {/* Core items */}
-        <div className="flex flex-col gap-0.5">
-          <NavItem id={COLLECTION.UNSORTED} label="Unsorted" icon={Inbox} isActive={activeCollection === COLLECTION.UNSORTED} count={bookmarkCounts[COLLECTION.UNSORTED] || 0} onSelect={handleSelectCollection} />
-          <NavItem id={COLLECTION.TRASH} label="Trash" icon={Trash2} isActive={activeCollection === COLLECTION.TRASH} count={bookmarkCounts[COLLECTION.TRASH] || 0} onSelect={handleSelectCollection} />
-        </div>
-
-        {/* Custom Collections */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-2.5 py-3 space-y-4">
+        {/* Collections are the primary navigation, deliberately first. */}
         <div>
           <div
-            className="flex items-center justify-between px-3 mb-1.5 rounded-md transition-colors hover:bg-zinc-100/30"
+            className="flex items-center justify-between px-2.5 mb-1 rounded-md transition-colors hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
@@ -579,15 +629,16 @@ export function Sidebar({
           >
             <button
               onClick={() => setIsCollectionsCollapsed(prev => !prev)}
-              className="flex items-center gap-1.5 py-1.5 w-full text-left text-[12px] font-semibold text-zinc-600 hover:text-zinc-900 transition-colors"
+              className="flex items-center gap-1.5 py-1.5 w-full text-left text-[12px] font-semibold text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
               aria-expanded={!isCollectionsCollapsed}
             >
               <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollectionsCollapsed ? '' : 'rotate-90'}`} />
-              <span>Collections</span>
+              <span>{t('collections')}</span>
+              <span className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500">{collections.length}</span>
             </button>
             <button
               onClick={onNewCollection}
-              className="p-1 rounded text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors pointer-events-auto shrink-0"
+              className="p-1 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition-colors pointer-events-auto shrink-0"
               title="New Collection"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -596,7 +647,7 @@ export function Sidebar({
           <div className="flex flex-col gap-0.5">
             <NavItem
               id={COLLECTION.ALL}
-              label="All Bookmarks"
+              label={t('allBookmarks')}
               icon={LayoutGrid}
               isActive={activeCollection === COLLECTION.ALL}
               count={bookmarkCounts[COLLECTION.ALL] || 0}
@@ -631,7 +682,6 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Tags Section */}
         {(activeTags.length > 0 || availableTags.length > 0) && onToggleTag && (
           <TagsSection
             isCollapsed={isTagsCollapsed}
@@ -641,78 +691,199 @@ export function Sidebar({
             onToggleTag={onToggleTag}
           />
         )}
+
+        {/* Utility views stay available without competing with collections. */}
+        <div className="flex flex-col gap-0.5 pt-2 border-t border-zinc-200/80 dark:border-zinc-800">
+          <NavItem id={COLLECTION.UNSORTED} label={t('unsorted')} icon={Inbox} isActive={activeCollection === COLLECTION.UNSORTED} count={bookmarkCounts[COLLECTION.UNSORTED] || 0} onSelect={handleSelectCollection} />
+          <NavItem id={COLLECTION.TRASH} label={t('trash')} icon={Trash2} isActive={activeCollection === COLLECTION.TRASH} count={bookmarkCounts[COLLECTION.TRASH] || 0} onSelect={handleSelectCollection} />
+        </div>
+
+        {/* Smart views are secondary and collapse by default to preserve vertical space. */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setIsSmartCollapsed(prev => !prev)}
+            className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-left text-[12px] font-semibold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60 rounded-md dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+            aria-expanded={isSmartExpanded}
+          >
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isSmartExpanded ? 'rotate-90' : ''}`} />
+            <span>{t('smart')}</span>
+          </button>
+          {isSmartExpanded && (
+            <div className="flex flex-col gap-0.5 mt-1">
+              <NavItem id={SMART.PINNED} label={t('smartPinned')} icon={Pin} isActive={activeCollection === SMART.PINNED} count={bookmarkCounts[SMART.PINNED] || 0} onSelect={handleSelectCollection} />
+              <NavItem id={SMART.UNTAGGED} label={t('smartUntagged')} icon={Tags} isActive={activeCollection === SMART.UNTAGGED} count={bookmarkCounts[SMART.UNTAGGED] || 0} onSelect={handleSelectCollection} />
+              <NavItem id={SMART.NO_COVER} label={t('smartNoCover')} icon={ImageOff} isActive={activeCollection === SMART.NO_COVER} count={bookmarkCounts[SMART.NO_COVER] || 0} onSelect={handleSelectCollection} />
+              <NavItem id={SMART.THIS_WEEK} label={t('smartThisWeek')} icon={Calendar} isActive={activeCollection === SMART.THIS_WEEK} count={bookmarkCounts[SMART.THIS_WEEK] || 0} onSelect={handleSelectCollection} />
+              <NavItem id={SMART.BROKEN} label={t('smartBroken')} icon={Link2Off} isActive={activeCollection === SMART.BROKEN} count={bookmarkCounts[SMART.BROKEN] || 0} onSelect={handleSelectCollection} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Footer Settings */}
-      <div className="px-3 py-2.5 border-t border-zinc-200/60 shrink-0 relative">
+      <div className="px-3 py-2.5 border-t border-zinc-200/60 dark:border-zinc-700/60 shrink-0 relative">
         <button
           onClick={(e) => {
             e.stopPropagation();
             setShowSettings(!showSettings);
           }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors text-[13px] font-medium ${
-            showSettings ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200/60' : 'text-zinc-600 hover:text-zinc-900 hover:bg-white/70'
+            showSettings
+              ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm border border-zinc-200/60 dark:border-zinc-600'
+              : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-white/70 dark:hover:bg-zinc-800/70'
           }`}
         >
           <Settings className="w-4 h-4" />
-          <span>Settings</span>
+          <span>{t('settings')}</span>
         </button>
 
         {showSettings && (
-          <div className="absolute bottom-full left-3 mb-1.5 w-64 bg-white rounded-lg shadow-xl border border-zinc-200 py-1.5 z-50 text-[13px] overflow-hidden animate-slide-up">
+          <div className="absolute bottom-full left-3 mb-1.5 w-64 bg-white dark:bg-zinc-900 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 py-1.5 z-50 text-[13px] overflow-hidden animate-slide-up">
+            {/* Google Drive — first so users always see sync */}
+            {(onOpenGDrive || onSyncGDrive) && (
+              <div className="px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 mb-1">
+                <p className="px-2 pb-1 text-[11px] font-semibold text-zinc-400 flex items-center gap-1">
+                  <Cloud className="w-3 h-3" />
+                  {t('gdriveSection')}
+                </p>
+                <button
+                  type="button"
+                  disabled={gdrive?.busy}
+                  onClick={() => {
+                    setShowSettings(false);
+                    if (gdrive?.connected && onSyncGDrive) {
+                      onSyncGDrive();
+                    } else if (onOpenGDrive) {
+                      onOpenGDrive();
+                    } else {
+                      onSyncGDrive?.();
+                    }
+                  }}
+                  className="w-full flex items-center text-left gap-2.5 px-2 py-2 rounded-md transition-colors text-zinc-700 dark:text-zinc-200 hover:bg-brand-50 dark:hover:bg-brand-950/40 hover:text-brand-700 dark:hover:text-brand-300 disabled:opacity-60"
+                >
+                  {gdrive?.busy ? (
+                    <Loader2 className="w-4 h-4 shrink-0 animate-spin text-brand-600" />
+                  ) : gdrive?.connected ? (
+                    <Cloud className="w-4 h-4 shrink-0 text-brand-600 dark:text-brand-400" />
+                  ) : (
+                    <CloudOff className="w-4 h-4 shrink-0 text-zinc-400" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <span className="block font-medium truncate">{t('gdriveMenuTitle')}</span>
+                    <span className="block text-[11px] leading-snug text-zinc-400 truncate">
+                      {gdrive?.busy
+                        ? t('gdriveSyncing')
+                        : gdrive?.connected
+                          ? gdrive.email
+                            ? `${t('gdriveConnectedAs')} ${gdrive.email}`
+                            : t('gdriveStatusSynced')
+                          : t('gdriveMenuHint')}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 shrink-0">
+                    {gdrive?.connected ? t('gdriveMenuSync') : t('gdriveMenuConnect')}
+                  </span>
+                </button>
+                {onOpenPreferences && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSettings(false);
+                      onOpenGDrive ? onOpenGDrive() : onOpenPreferences();
+                    }}
+                    className="w-full text-left px-2 py-1 text-[11px] text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400"
+                  >
+                    {t('gdriveSection')} → {t('preferences')}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {onOpenPreferences && (
+              <div className="px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 mb-1">
+                <button
+                  onClick={() => {
+                    setShowSettings(false);
+                    onOpenPreferences();
+                  }}
+                  className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                >
+                  <Settings className="w-4 h-4 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="block font-medium truncate">{t('preferences')}</span>
+                    <span className="block text-[11px] leading-snug text-zinc-400">Theme, language, trash…</span>
+                  </div>
+                </button>
+              </div>
+            )}
             <div className="px-2 py-1">
               <p className="px-2 pb-1 text-[11px] font-semibold text-zinc-400">Import</p>
               <button
                 onClick={onImportJson}
-                className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 rounded-md transition-colors"
+                className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
               >
                 <Upload className="w-4 h-4 shrink-0" />
                 <div className="min-w-0">
-                  <span className="block font-medium truncate">Import JSON</span>
+                  <span className="block font-medium truncate">{t('importJson')}</span>
                   <span className="block text-[11px] leading-snug text-zinc-400">Restore from an exported file.</span>
                 </div>
               </button>
               <button
                 onClick={onImport}
-                className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 rounded-md transition-colors"
+                className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
               >
                 <Book className="w-4 h-4 shrink-0" />
                 <div className="min-w-0">
-                  <span className="block font-medium truncate">Import Browser Bookmarks</span>
-                  <span className="block text-[11px] leading-snug text-zinc-400">Merge bookmarks from Chrome.</span>
+                  <span className="block font-medium truncate">{t('importBrowser')}</span>
+                  <span className="block text-[11px] leading-snug text-zinc-400">Folders become collections.</span>
                 </div>
               </button>
             </div>
 
             {onExport && (
-              <div className="px-2 py-1 border-t border-zinc-100 mt-1">
+              <div className="px-2 py-1 border-t border-zinc-100 dark:border-zinc-800 mt-1">
                 <p className="px-2 pb-1 text-[11px] font-semibold text-zinc-400">Export</p>
                 <button
                   onClick={onExport}
-                  className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 rounded-md transition-colors"
+                  className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
                 >
                   <Download className="w-4 h-4 shrink-0" />
                   <div className="min-w-0">
-                    <span className="block font-medium truncate">Export JSON</span>
+                    <span className="block font-medium truncate">{t('exportJson')}</span>
                     <span className="block text-[11px] leading-snug text-zinc-400">Back up bookmarks and collections.</span>
                   </div>
                 </button>
               </div>
             )}
 
-            {onRefreshPreviews && (
-              <div className="px-2 pt-1 border-t border-zinc-100 mt-1">
+            {(onRefreshPreviews || onCheckBroken) && (
+              <div className="px-2 pt-1 border-t border-zinc-100 dark:border-zinc-800 mt-1">
                 <p className="px-2 pb-1 text-[11px] font-semibold text-zinc-400">Maintenance</p>
-                <button
-                  onClick={onRefreshPreviews}
-                  className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 rounded-md transition-colors"
-                >
-                  <RefreshCw className="w-4 h-4 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="block font-medium truncate">Fetch Missing Previews</span>
-                    <span className="block text-[11px] leading-snug text-zinc-400">Try loading cover images again.</span>
-                  </div>
-                </button>
+                {onRefreshPreviews && (
+                  <button
+                    onClick={onRefreshPreviews}
+                    className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="block font-medium truncate">{t('fetchPreviews')}</span>
+                      <span className="block text-[11px] leading-snug text-zinc-400">Try loading cover images again.</span>
+                    </div>
+                  </button>
+                )}
+                {onCheckBroken && (
+                  <button
+                    onClick={onCheckBroken}
+                    className="w-full flex items-center text-left gap-2.5 px-2 py-2 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  >
+                    <Link2Off className="w-4 h-4 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="block font-medium truncate">{t('checkBroken')}</span>
+                      <span className="block text-[11px] leading-snug text-zinc-400">Probe HTTP status of links.</span>
+                    </div>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -724,13 +895,29 @@ export function Sidebar({
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize sidebar"
+        tabIndex={0}
+        aria-valuenow={Math.round(width)}
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={SIDEBAR_MAX_WIDTH}
         onMouseDown={(e) => {
           e.preventDefault();
           setIsResizing(true);
         }}
         onDoubleClick={handleResizeDoubleClick}
-        className="absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize group z-20"
-        title="Drag to resize, double-click to reset"
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            adjustWidth(-16);
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            adjustWidth(16);
+          } else if (e.key === 'Home') {
+            e.preventDefault();
+            setWidth(SIDEBAR_DEFAULT_WIDTH);
+          }
+        }}
+        className="absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize group z-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        title="Drag to resize, double-click to reset (arrow keys when focused)"
       >
         <div
           className={`absolute top-0 right-1 h-full w-px transition-colors ${
@@ -741,22 +928,3 @@ export function Sidebar({
     </div>
   );
 };
-
-function BookmarkIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
-    </svg>
-  );
-}

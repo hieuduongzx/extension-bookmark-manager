@@ -1,10 +1,27 @@
 {
   "manifest_version": 3,
   "name": "Bookmark Manager",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "A beautiful bookmark manager inspired by Raindrop.io. Save, organize, and search your bookmarks with collections and tags.",
-  "permissions": ["storage", "tabs", "bookmarks", "contextMenus", "activeTab", "scripting"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "bookmarks",
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "alarms",
+    "identity"
+  ],
   "host_permissions": ["<all_urls>"],
+  "oauth2": {
+    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.appdata",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
   "icons": {
     "16": "public/icons/icon-16.png",
     "32": "public/icons/icon-32.png",
@@ -24,5 +41,27 @@
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
+  },
+  "side_panel": {
+    "default_path": "index.html?target=dashboard"
+  },
+  "omnibox": {
+    "keyword": "bm"
+  },
+  "commands": {
+    "save-current-tab": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Save current tab to Bookmark Manager"
+    },
+    "open-dashboard": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+B",
+        "mac": "Command+Shift+B"
+      },
+      "description": "Open Bookmark Manager dashboard"
+    }
   }
 }

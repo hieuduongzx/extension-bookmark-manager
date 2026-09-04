@@ -29,6 +29,12 @@ interface DropdownProps<T extends string> {
   placeholder?: string;
   /** Max menu height in px (default 256). */
   menuMaxHeight?: number;
+  /** Sticky action at bottom of the menu (e.g. “New collection”). */
+  footerAction?: {
+    label: string;
+    onClick: () => void;
+    leading?: ReactNode;
+  };
 }
 
 /**
@@ -48,9 +54,13 @@ export function Dropdown<T extends string>({
   disabled = false,
   placeholder = "Select…",
   menuMaxHeight = 256,
+  footerAction,
 }: DropdownProps<T>) {
   const [open, setOpen] = useState(false);
+  const [openUp, setOpenUp] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const current = options.find((o) => o.value === value);
 
   useEffect(() => {
@@ -59,7 +69,10 @@ export function Dropdown<T extends string>({
       if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onEscape);
@@ -69,12 +82,53 @@ export function Dropdown<T extends string>({
     };
   }, [open]);
 
+  // Open upward when there isn't room below (short popup / near viewport bottom).
+  useEffect(() => {
+    if (!open) return;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    setOpenUp(spaceBelow < menuMaxHeight + 16 && spaceAbove > spaceBelow);
+  }, [open, menuMaxHeight]);
+
+  // Move focus to the selected (or first) option when the menu opens.
+  useEffect(() => {
+    if (!open) return;
+    const items = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]:not([disabled])');
+    if (!items || items.length === 0) return;
+    const selectedIdx = options.findIndex((o) => o.value === value && !o.disabled);
+    (items[selectedIdx >= 0 ? selectedIdx : 0] ?? items[0]).focus();
+  }, [open, options, value]);
+
+  const onListKeyDown = (e: React.KeyboardEvent) => {
+    const items = Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>('[role="option"]:not([disabled])') ?? []
+    );
+    if (items.length === 0) return;
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[(idx + 1 + items.length) % items.length]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[(idx - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    }
+  };
+
   const heightClass = size === "sm" ? "h-8" : "h-9";
   const paddingClass = size === "sm" ? "px-2.5" : "px-3";
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
@@ -82,25 +136,25 @@ export function Dropdown<T extends string>({
         aria-expanded={open}
         aria-label={ariaLabel}
         className={`group w-full flex items-center justify-between gap-2 ${paddingClass} ${heightClass}
-          rounded-md border bg-white text-left transition-colors
+          rounded-md border bg-white dark:bg-zinc-800 text-left transition-colors
           disabled:opacity-50 disabled:cursor-not-allowed
           focus:outline-none focus:ring-2 focus:ring-brand-500/20
           ${
             open
-              ? "border-brand-300 ring-1 ring-brand-200"
-              : "border-zinc-200 hover:border-zinc-300"
+              ? "border-brand-300 ring-1 ring-brand-200 dark:border-brand-700 dark:ring-brand-800"
+              : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
           }`}
       >
         <span className="flex items-center gap-2 min-w-0 flex-1">
           {buttonLeading}
           {current?.leading && !buttonLeading ? current.leading : null}
-          <span className="text-[13px] font-semibold tracking-tight text-zinc-900 truncate">
+          <span className="text-[13px] font-semibold tracking-tight text-zinc-900 dark:text-zinc-100 truncate">
             {buttonLabel ?? current?.label ?? placeholder}
           </span>
         </span>
         <ChevronDown
           className={`w-3.5 h-3.5 shrink-0 text-zinc-400 transition-transform ${
-            open ? "rotate-180 text-zinc-700" : ""
+            open ? "rotate-180 text-zinc-700 dark:text-zinc-300" : ""
           }`}
         />
       </button>
@@ -108,9 +162,13 @@ export function Dropdown<T extends string>({
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-zinc-200 rounded-md shadow-lg overflow-hidden animate-slide-up"
+          onKeyDown={onListKeyDown}
+          className={`absolute left-0 right-0 z-30 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg overflow-hidden animate-slide-up ${
+            openUp ? "bottom-full mb-1" : "top-full mt-1"
+          }`}
         >
           <div
+            ref={listRef}
             className="p-1 flex flex-col overflow-auto custom-scrollbar"
             style={{ maxHeight: menuMaxHeight }}
           >
@@ -122,6 +180,7 @@ export function Dropdown<T extends string>({
                   key={option.value}
                   type="button"
                   role="option"
+                  tabIndex={-1}
                   aria-selected={selected}
                   disabled={option.disabled}
                   onClick={() => {
@@ -133,8 +192,8 @@ export function Dropdown<T extends string>({
                   className={`flex items-start gap-2 pr-2 py-1.5 rounded text-left transition-colors
                     disabled:opacity-50 disabled:cursor-not-allowed ${
                       selected
-                        ? "bg-brand-50 text-brand-900"
-                        : "text-zinc-700 hover:bg-zinc-100"
+                        ? "bg-brand-50 text-brand-900 dark:bg-brand-950/50 dark:text-brand-100"
+                        : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     }`}
                 >
                   <Check
@@ -150,7 +209,9 @@ export function Dropdown<T extends string>({
                     {option.description && (
                       <span
                         className={`text-[10.5px] leading-snug truncate ${
-                          selected ? "text-brand-700/80" : "text-zinc-500"
+                          selected
+                            ? "text-brand-700/80 dark:text-brand-300/80"
+                            : "text-zinc-500 dark:text-zinc-400"
                         }`}
                       >
                         {option.description}
@@ -161,6 +222,25 @@ export function Dropdown<T extends string>({
               );
             })}
           </div>
+          {footerAction && (
+            <div className="border-t border-zinc-100 dark:border-zinc-800 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  footerAction.onClick();
+                }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/40 transition-colors"
+              >
+                {footerAction.leading && (
+                  <span className="shrink-0">{footerAction.leading}</span>
+                )}
+                <span className="text-[12.5px] font-semibold tracking-tight truncate">
+                  {footerAction.label}
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
