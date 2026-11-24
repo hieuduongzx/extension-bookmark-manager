@@ -15,6 +15,9 @@ import { BookmarkList } from './components/BookmarkList';
 import { FolderView } from './components/FolderView';
 import { QuickSave } from './components/QuickSave';
 import { ConfirmDialog, type ConfirmDialogState } from './components/ConfirmDialog';
+import { ToastStack } from './components/ui/Toast';
+import { ReauthBanner } from './components/ui/DriveStatus';
+import { useApplyTheme } from './components/ui/ThemeProvider';
 import {
   SidebarSkeleton,
   SearchBarSkeleton,
@@ -39,7 +42,6 @@ import {
   type ViewMode,
 } from './types';
 import {
-  applyTheme,
   buildDescendantsMap,
   buildRelatedRootsMap,
   exportBookmarksToHtml,
@@ -223,19 +225,11 @@ function App() {
   const showQuickSave =
     !isDashboard && !forceLibrary && state.settings.showQuickSave !== false;
 
-  useEffect(() => {
-    applyTheme(state.settings.theme);
-    setLocale(state.settings.locale);
-  }, [state.settings.theme, state.settings.locale]);
+  useApplyTheme(state.settings.theme);
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => {
-      if (state.settings.theme === 'system') applyTheme('system');
-    };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [state.settings.theme]);
+    setLocale(state.settings.locale);
+  }, [state.settings.locale]);
 
   useEffect(() => {
     if (state.settings.defaultSort) setSortOrder(state.settings.defaultSort);
@@ -282,6 +276,7 @@ function App() {
     return {
       connected: gdriveStatus.connected,
       needsReauth: gdriveStatus.needsReauth,
+      status: gdriveStatus.status,
       email: gdriveStatus.email,
       lastSyncAt: gdriveStatus.lastSyncAt,
       busy: gdriveBusy || gdriveStatus.syncing,
@@ -1298,12 +1293,12 @@ function App() {
     }
     return (
       <div
-        className={`flex bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden font-sans ${
+        className={`flex bg-[var(--bg)] text-[var(--text)] overflow-hidden font-sans ${
           isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'
         }`}
       >
         <SidebarSkeleton />
-        <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900">
+        <main className="flex-1 flex flex-col min-w-0 bg-[var(--bg)]">
           <SearchBarSkeleton />
           <div className="flex-1 overflow-hidden">
             <BookmarkListSkeleton count={6} />
@@ -1327,7 +1322,10 @@ function App() {
             await send({ type: 'BM:moveToTrash', id });
             showToast(t('movedToTrash'));
           }}
-          onOpenLibrary={() => setForceLibrary(true)}
+          onOpenLibrary={(colId) => {
+            if (colId) setActiveCollection(colId);
+            setForceLibrary(true);
+          }}
           onOpenDashboard={handleOpenDashboard}
           onOpenPreferences={() => {
             setPrefsFocusGDrive(false);
@@ -1373,18 +1371,7 @@ function App() {
             onClose={() => setConfirmDialog(null)}
           />
         )}
-        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 items-end pointer-events-none">
-          {toasts.map((toastItem) => (
-            <div
-              key={toastItem.id}
-              className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-3.5 py-2 rounded-lg shadow-pop text-[13px] font-medium flex items-center gap-2 animate-slide-up"
-              role="status"
-            >
-              <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-              {toastItem.msg}
-            </div>
-          ))}
-        </div>
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </>
     );
   }
@@ -1432,7 +1419,7 @@ function App() {
 
   return (
     <div
-      className={`flex bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden font-sans relative ${
+      className={`flex bg-[var(--bg)] text-[var(--text)] overflow-hidden font-sans relative ${
         isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'
       }`}
     >
@@ -1442,7 +1429,7 @@ function App() {
       {/* Narrow Viewport / Chrome Side Panel Overlay Drawer */}
       {isNarrowViewport && sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 flex bg-zinc-900/40 dark:bg-black/60 backdrop-blur-[1px]"
+          className="fixed inset-0 z-40 flex bg-black/55"
           onClick={() => setSidebarOpen(false)}
         >
           <div className="h-full shadow-pop" onClick={(e) => e.stopPropagation()}>
@@ -1451,7 +1438,15 @@ function App() {
         </div>
       )}
 
-      <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900">
+      <main className="flex-1 flex flex-col min-w-0 bg-[var(--bg)]">
+        {gdriveUi?.needsReauth && (
+          <ReauthBanner
+            message={t('popupReauthBanner')}
+            actionLabel={t('gdriveReconnect')}
+            busy={gdriveUi.busy}
+            onAction={openGDriveSettings}
+          />
+        )}
         <SearchBar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -1682,32 +1677,7 @@ function App() {
         />
       )}
 
-      <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 items-end pointer-events-none">
-        {toasts.map((toastItem) => (
-          <div
-            key={toastItem.id}
-            className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-4 py-2.5 rounded-xl shadow-pop text-[13px] font-medium flex items-center gap-2 animate-slide-up"
-            role="status"
-          >
-            <div className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0" />
-            <span>{toastItem.msg}</span>
-            {toastItem.action && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const action = toastItem.action;
-                  if (!action) return;
-                  dismissToast(toastItem.id);
-                  await action.onClick();
-                }}
-                className="ml-2 text-brand-600 dark:text-brand-400 hover:text-brand-700 font-semibold"
-              >
-                {toastItem.action.label}
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

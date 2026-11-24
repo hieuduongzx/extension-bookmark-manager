@@ -1,0 +1,496 @@
+/* Shared *2k UI Primitives — synchronized with TubeDeck2k */
+
+/* Buttons (*2k standard: height 32px / sm 28px, radius --radius, nowrap) */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+}
+
+.ui-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ui-btn--primary {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+.ui-btn--primary:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.ui-btn--secondary {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.ui-btn--secondary:hover:not(:disabled) {
+  background-color: var(--surface-2);
+}
+
+.ui-btn--ghost {
+  background-color: transparent;
+  color: var(--text-muted);
+}
+
+.ui-btn--ghost:hover:not(:disabled) {
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+
+.ui-btn--danger {
+  background-color: var(--danger);
+  color: #ffffff;
+}
+
+.ui-btn--danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.ui-btn--danger-subtle {
+  background-color: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--border));
+  color: var(--danger);
+}
+
+.ui-btn--danger-subtle:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--danger) 16%, var(--surface));
+}
+
+.ui-btn--icon {
+  width: 32px;
+  padding: 0;
+}
+
+.ui-btn--sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.ui-btn--sm.ui-btn--icon {
+  width: 28px;
+  padding: 0;
+}
+
+/* Card (*2k standard: --surface, uniform 1px --border, --radius-lg) */
+.ui-card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+/* Form controls */
+.ui-input,
+.ui-select {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.ui-textarea {
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.ui-input:focus,
+.ui-select:focus,
+.ui-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.22);
+}
+
+.ui-input::placeholder,
+.ui-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.ui-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+/* Accessible toggle switch (*2k standard) */
+.ui-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background-color: var(--surface-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.ui-switch.is-on {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ui-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-switch-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ui-switch.is-on .ui-switch-thumb {
+  transform: translateX(16px);
+}
+
+/* Segmented control (*2k standard) */
+.ui-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.ui-segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.13s ease, color 0.13s ease, border-color 0.13s ease;
+}
+
+.ui-segmented-btn:hover:not(.is-active) {
+  color: var(--text);
+}
+
+.ui-segmented-btn.is-active {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Dialog (*2k standard) */
+.ui-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+  padding: 16px;
+}
+
+.ui-dialog {
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+}
+
+.ui-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ui-dialog-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ui-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+  color: var(--text);
+}
+
+.ui-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background-color: var(--bg);
+  flex-shrink: 0;
+}
+
+/* Toast (bottom-right, uniform 1px border — NEVER thick border-left) */
+.ui-toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  max-width: 380px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ui-toast--success {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+}
+
+.ui-toast--error {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+}
+
+.ui-toast--info {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.ui-toast-action {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-toast-action:hover {
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Drive status dot (*2k standard) */
+.ui-drive-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s ease;
+}
+
+.ui-drive-dot:hover {
+  transform: scale(1.2);
+}
+
+.ui-drive-dot.is-synced {
+  background-color: var(--success);
+}
+
+.ui-drive-dot.is-syncing {
+  background-color: var(--accent);
+  animation: ui-pulse 1s ease-in-out infinite;
+}
+
+.ui-drive-dot.is-error {
+  background-color: var(--danger);
+}
+
+.ui-drive-dot.is-warn {
+  background-color: var(--warning);
+}
+
+.ui-drive-dot.is-muted {
+  background-color: var(--text-muted);
+  opacity: 0.55;
+}
+
+@keyframes ui-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+/* Drive needs_reauth notice banner (uniform 1px border, warm amber tint) */
+.ui-reauth-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background-color: rgba(245, 158, 11, 0.12);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.28);
+  font-size: 12px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.ui-reauth-banner--card {
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.ui-reauth-ic {
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.ui-reauth-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-reauth-btn {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background-color: var(--surface);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.12s ease;
+}
+
+.ui-reauth-btn:hover:not(:disabled) {
+  background-color: var(--surface-2);
+}
+
+.ui-reauth-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Status notice cards (uniform 1px border, subtle tint) */
+.ui-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.ui-notice--warn {
+  background-color: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.ui-notice--danger {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+.ui-notice--info {
+  background-color: rgba(59, 130, 246, 0.09);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+/* Subtle native scrollbars (*2k standard) */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Spin utility */
+.ui-spin {
+  animation: ui-spin 0.9s linear infinite;
+}
+
+@keyframes ui-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

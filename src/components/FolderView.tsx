@@ -12,7 +12,6 @@ interface FolderViewProps {
   bookmarks: Bookmark[];
   viewMode: 'grid' | 'list' | 'masonry';
   collectionColumns: 1 | 2 | 3 | 4 | 5;
-  /** bookmarkId → closest saved ancestor (for sub-page badges) */
   relatedRoots?: Map<string, Bookmark>;
   onSelectCollection?: (id: string) => void;
   onAddInCollection?: (collectionId: string) => void;
@@ -107,162 +106,155 @@ function FolderViewInner({
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar">
-      <div className="p-5 space-y-6 w-full max-w-7xl mx-auto">
-        <div>
-          <div
-            className="grid gap-4"
-            style={{
-              gridTemplateColumns: `repeat(auto-fill, minmax(max(260px, calc((100% - ${(collectionColumns - 1) * 16}px) / ${collectionColumns})), 1fr))`,
-            }}
-          >
-            {allFolders.map((folder) => {
-              const Icon = folder.icon;
-              const colorClasses = COLLECTION_BADGE_BG[folder.color] || COLLECTION_BADGE_BG.blue;
-              const isDropTarget = dragOverFolderId === folder.id;
+      <div className="px-5 pt-2 pb-6 space-y-6 w-full max-w-7xl mx-auto">
+        <div
+          className="grid gap-4"
+          style={{
+            gridTemplateColumns: `repeat(auto-fill, minmax(max(260px, calc((100% - ${(collectionColumns - 1) * 16}px) / ${collectionColumns})), 1fr))`,
+          }}
+        >
+          {allFolders.map((folder) => {
+            const Icon = folder.icon;
+            const colorClasses = COLLECTION_BADGE_BG[folder.color] || COLLECTION_BADGE_BG.blue;
+            const isDropTarget = dragOverFolderId === folder.id;
 
-              return (
-                <div
-                  key={folder.id}
-                  onDragOver={(e) => {
-                    if (
-                      folder.canDrop &&
-                      e.dataTransfer.types.includes('application/bookmark-id')
-                    ) {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                      if (dragOverFolderId !== folder.id) setDragOverFolderId(folder.id);
-                    }
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setDragOverFolderId((cur) => (cur === folder.id ? null : cur));
-                    }
-                  }}
-                  onDrop={(e) => {
-                    if (!folder.canDrop) return;
+            return (
+              <div
+                key={folder.id}
+                onDragOver={(e) => {
+                  if (folder.canDrop && e.dataTransfer.types.includes('application/bookmark-id')) {
                     e.preventDefault();
-                    setDragOverFolderId(null);
-                    const dragId = e.dataTransfer.getData('application/bookmark-id');
-                    if (dragId && onDropBookmark) {
-                      onDropBookmark(dragId, folder.id);
-                    }
-                  }}
-                  className={`bg-white border rounded-xl p-4 transition-all duration-200 flex flex-col dark:bg-zinc-900 ${
-                    isDropTarget
-                      ? 'border-brand-500 ring-2 ring-brand-500/25 shadow-md'
-                      : 'border-zinc-200/80 hover:shadow-md hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 mb-3">
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragOverFolderId !== folder.id) setDragOverFolderId(folder.id);
+                  }
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDragOverFolderId((cur) => (cur === folder.id ? null : cur));
+                  }
+                }}
+                onDrop={(e) => {
+                  if (!folder.canDrop) return;
+                  e.preventDefault();
+                  setDragOverFolderId(null);
+                  const dragId = e.dataTransfer.getData('application/bookmark-id');
+                  if (dragId && onDropBookmark) {
+                    onDropBookmark(dragId, folder.id);
+                  }
+                }}
+                className={`bg-[var(--surface)] border rounded-[var(--radius-lg)] p-4 transition-colors duration-150 flex flex-col ${
+                  isDropTarget
+                    ? 'border-[var(--accent)] ring-2 ring-[rgba(59,130,246,0.22)]'
+                    : 'border-[var(--border)] hover:border-[color-mix(in_srgb,var(--accent)_40%,var(--border))]'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => onSelectCollection?.(folder.id)}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left group/hdr"
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-[var(--radius)] flex items-center justify-center shrink-0 ${colorClasses} border`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-[13.5px] font-semibold text-[var(--text)] truncate group-hover/hdr:text-[var(--accent)] transition-colors flex items-center gap-1 m-0">
+                        <span className="truncate">{folder.label}</span>
+                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover/hdr:opacity-75 shrink-0 transition-opacity" />
+                      </h3>
+                      <p className="text-[11.5px] text-[var(--text-muted)] m-0">
+                        {folder.bookmarks.length} {t('bookmarksLabel')}
+                      </p>
+                    </div>
+                  </button>
+
+                  {folder.canDrop && onAddInCollection && (
                     <button
                       type="button"
-                      onClick={() => onSelectCollection?.(folder.id)}
-                      className="flex items-center gap-3 flex-1 min-w-0 text-left group/hdr"
+                      onClick={() => onAddInCollection(folder.id)}
+                      className="popup-icon-btn"
+                      title={t('addToCollection')}
+                      aria-label={t('addToCollection')}
                     >
-                      <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${colorClasses} border`}
-                      >
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-[13.5px] font-semibold text-zinc-900 dark:text-zinc-50 truncate group-hover/hdr:text-brand-600 dark:group-hover/hdr:text-brand-400 transition-colors flex items-center gap-1">
-                          <span className="truncate">{folder.label}</span>
-                          <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover/hdr:opacity-70 shrink-0 transition-opacity" />
-                        </h3>
-                        <p className="text-[11.5px] text-zinc-500 dark:text-zinc-400">
-                          {folder.bookmarks.length} {t('bookmarksLabel')}
-                        </p>
-                      </div>
+                      <Plus size={15} />
                     </button>
-
-                    {folder.canDrop && onAddInCollection && (
-                      <button
-                        type="button"
-                        onClick={() => onAddInCollection(folder.id)}
-                        className="btn-icon-sm text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100"
-                        title={t('addToCollection')}
-                        aria-label={t('addToCollection')}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-
-                  {folder.bookmarks.length > 0 ? (
-                    <div className="flex flex-col gap-0.5 max-h-[460px] overflow-y-auto custom-scrollbar pr-0.5">
-                      {folder.bookmarks.map((bookmark) => (
-                        <BookmarkCard
-                          key={bookmark.id}
-                          bookmark={bookmark}
-                          viewMode="list"
-                          relatedRoot={relatedRoots?.get(bookmark.id)}
-                          onEdit={onEdit}
-                          onDelete={onDelete}
-                          onRestore={onRestore}
-                          onCopyUrl={onCopyUrl}
-                          isTrash={false}
-                          isSelected={selectedIds.has(bookmark.id)}
-                          onToggleSelect={onToggleSelect}
-                          onTogglePin={onTogglePin}
-                          isSelectMode={isSelectMode}
-                          onTagClick={onTagClick}
-                          compact
-                          locale={locale}
-                          draggable={!!onReorder && !isSelectMode}
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData('application/bookmark-id', bookmark.id);
-                            e.dataTransfer.effectAllowed = 'move';
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const dragId = e.dataTransfer.getData('application/bookmark-id');
-                            if (dragId && dragId !== bookmark.id && onReorder) {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              const position: ReorderPosition =
-                                e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-                              onReorder(dragId, bookmark.id, position);
-                            }
-                          }}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[12px] text-zinc-400 dark:text-zinc-500 text-center py-6">
-                      {t('noBookmarks')}
-                    </p>
                   )}
                 </div>
-              );
-            })}
 
-            {/* New Collection Card */}
-            <button
-              type="button"
-              onClick={onNewCollection}
-              className="bg-white border-2 border-dashed border-zinc-200 rounded-xl p-5 flex flex-col items-center justify-center gap-2.5 hover:border-brand-300 hover:bg-brand-50/30 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:border-brand-700 dark:hover:bg-brand-950/20 transition-all duration-200 min-h-[140px]"
-            >
-              <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                <Plus className="w-5 h-5 text-zinc-400" />
+                {folder.bookmarks.length > 0 ? (
+                  <div className="flex flex-col gap-0.5 max-h-[460px] overflow-y-auto custom-scrollbar pr-0.5">
+                    {folder.bookmarks.map((bookmark) => (
+                      <BookmarkCard
+                        key={bookmark.id}
+                        bookmark={bookmark}
+                        viewMode="list"
+                        relatedRoot={relatedRoots?.get(bookmark.id)}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onRestore={onRestore}
+                        onCopyUrl={onCopyUrl}
+                        isTrash={false}
+                        isSelected={selectedIds.has(bookmark.id)}
+                        onToggleSelect={onToggleSelect}
+                        onTogglePin={onTogglePin}
+                        isSelectMode={isSelectMode}
+                        onTagClick={onTagClick}
+                        compact
+                        locale={locale}
+                        draggable={!!onReorder && !isSelectMode}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('application/bookmark-id', bookmark.id);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const dragId = e.dataTransfer.getData('application/bookmark-id');
+                          if (dragId && dragId !== bookmark.id && onReorder) {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const position: ReorderPosition =
+                              e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                            onReorder(dragId, bookmark.id, position);
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-[var(--text-muted)] text-center py-6 m-0">
+                    {t('noBookmarks')}
+                  </p>
+                )}
               </div>
-              <span className="text-[13px] font-medium text-zinc-500 dark:text-zinc-400">
-                {t('newCollection')}
-              </span>
-            </button>
-          </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={onNewCollection}
+            className="bg-[var(--surface)] border border-dashed border-[var(--border)] rounded-[var(--radius-lg)] p-5 flex flex-col items-center justify-center gap-2.5 hover:border-[var(--accent)] hover:bg-[rgba(59,130,246,0.06)] transition-colors min-h-[140px]"
+          >
+            <div className="w-10 h-10 rounded-[var(--radius)] bg-[var(--surface-2)] flex items-center justify-center text-[var(--text-muted)]">
+              <Plus className="w-5 h-5" />
+            </div>
+            <span className="text-[13px] font-medium text-[var(--text-muted)]">
+              {t('newCollection')}
+            </span>
+          </button>
         </div>
 
-        {/* Trash Section */}
         {trashBookmarks.length > 0 && (
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200 dark:bg-rose-950/40 dark:border-rose-900 flex items-center justify-center">
-                <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <div className="w-8 h-8 rounded-[var(--radius)] bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.28)] flex items-center justify-center text-[var(--danger)]">
+                <Trash2 className="w-4 h-4" />
               </div>
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{t('trash')}</h3>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              <h3 className="text-[14px] font-semibold text-[var(--text)] m-0">{t('trash')}</h3>
+              <span className="text-[12px] text-[var(--text-muted)]">
                 ({trashBookmarks.length} {t('bookmarksLabel')})
               </span>
             </div>

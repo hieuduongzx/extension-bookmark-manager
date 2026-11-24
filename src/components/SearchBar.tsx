@@ -22,6 +22,7 @@ import {
   Command,
 } from 'lucide-react';
 import { Dropdown } from './Dropdown';
+import { Button } from './ui/Button';
 import type { Collection, LocaleCode, SortOrder, ViewMode } from '../types';
 import { COLLECTION } from '../types';
 import { buildCollectionTree, flattenCollectionTree } from '../utils';
@@ -108,7 +109,6 @@ export function SearchBar({
   const [showTag, setShowTag] = useState(false);
   const [showOperators, setShowOperators] = useState(false);
 
-  // Dismiss popovers on outside-click or Escape.
   useEffect(() => {
     if (!showMove && !showTag && !showOperators) return;
     const closeAll = () => {
@@ -118,10 +118,7 @@ export function SearchBar({
     };
     const onDown = (e: MouseEvent) => {
       const node = e.target as Node;
-      if (
-        !bulkActionsRef.current?.contains(node) &&
-        !filterPopRef.current?.contains(node)
-      ) {
+      if (!bulkActionsRef.current?.contains(node) && !filterPopRef.current?.contains(node)) {
         closeAll();
       }
     };
@@ -185,64 +182,52 @@ export function SearchBar({
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  // ─── Bulk Select Mode Bar ───────────────────────────────────────────────────
+  // ─── Bulk Select Mode Bar (*2k subtle accent tint + 1px bottom border) ──────
   if (isSelectMode || selectedCount > 0) {
     return (
-      <div className="flex items-center justify-between gap-2 py-2.5 px-5 border-b border-brand-200 dark:border-brand-900 bg-brand-50/80 dark:bg-brand-950/40 shrink-0 z-20 relative flex-wrap">
+      <div className="flex items-center justify-between gap-2 py-2.5 px-5 border-b border-[color-mix(in_srgb,var(--accent)_30%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] shrink-0 z-20 relative flex-wrap">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onSelectAll}
-            className="flex items-center gap-2 px-2 py-1.5 text-brand-700 dark:text-brand-300 hover:bg-brand-100/60 dark:hover:bg-brand-900/40 rounded-md transition-colors font-medium text-[13px]"
-          >
-            {isAllSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-            {isAllSelected ? t('deselectAll') : t('selectAll')}
-          </button>
-          <span className="text-[13px] font-semibold text-brand-900 dark:text-brand-100 tabular-nums">
+          <Button variant="ghost" size="sm" onClick={onSelectAll} className="!text-[var(--accent)]">
+            {isAllSelected ? <CheckSquare size={15} /> : <Square size={15} />}
+            <span>{isAllSelected ? t('deselectAll') : t('selectAll')}</span>
+          </Button>
+          <span className="text-[13px] font-semibold text-[var(--text)] tabular-nums">
             {selectedCount} {t('selected')}
           </span>
         </div>
 
         <div ref={bulkActionsRef} className="flex items-center gap-1.5 flex-wrap justify-end">
           {selectedCount > 0 && isTrashView && onBulkRestore && (
-            <button
-              type="button"
-              onClick={onBulkRestore}
-              className="flex items-center gap-1.5 px-2.5 h-8 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-[12px] font-medium shadow-sm transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> {t('restoreSelected')}
-            </button>
+            <Button variant="primary" size="sm" onClick={onBulkRestore}>
+              <RotateCcw size={13} /> {t('restoreSelected')}
+            </Button>
           )}
 
           {selectedCount > 0 && !isTrashView && onBulkOpenTabs && (
-            <button
-              type="button"
-              onClick={onBulkOpenTabs}
-              className="flex items-center gap-1.5 px-2.5 h-8 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 rounded-md text-[12px] font-medium hover:bg-zinc-50 dark:hover:bg-zinc-700"
-            >
-              <ExternalLink className="w-3.5 h-3.5" /> {t('openSelected')}
-            </button>
+            <Button variant="secondary" size="sm" onClick={onBulkOpenTabs}>
+              <ExternalLink size={13} /> {t('openSelected')}
+            </Button>
           )}
 
           {selectedCount > 0 && !isTrashView && onBulkMove && (
             <div className="relative">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => {
                   setShowMove((v) => !v);
                   setShowTag(false);
                 }}
-                className="flex items-center gap-1.5 px-2.5 h-8 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 rounded-md text-[12px] font-medium hover:bg-zinc-50 dark:hover:bg-zinc-700"
               >
-                <FolderInput className="w-3.5 h-3.5" /> {t('moveTo')}
-              </button>
+                <FolderInput size={13} /> {t('moveTo')}
+              </Button>
               {showMove && (
-                <div className="absolute right-0 top-full mt-1 w-52 max-h-56 overflow-y-auto custom-scrollbar bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-pop z-30 py-1">
+                <div className="absolute right-0 top-full mt-1 w-52 max-h-56 overflow-y-auto custom-scrollbar bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius)] shadow-pop z-30 p-1">
                   {moveOptions.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
-                      className="w-full text-left px-3 py-1.5 text-[12px] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 truncate"
+                      className="w-full text-left px-2.5 py-1.5 text-[12px] text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px] truncate"
                       onClick={() => {
                         onBulkMove(opt.value);
                         setShowMove(false);
@@ -258,38 +243,30 @@ export function SearchBar({
 
           {selectedCount > 0 && !isTrashView && onBulkTag && (
             <div className="relative">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => {
                   setShowTag((v) => !v);
                   setShowMove(false);
                 }}
-                className="flex items-center gap-1.5 px-2.5 h-8 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 rounded-md text-[12px] font-medium hover:bg-zinc-50 dark:hover:bg-zinc-700"
               >
-                <Tag className="w-3.5 h-3.5" /> {t('tags')}
-              </button>
+                <Tag size={13} /> {t('tags')}
+              </Button>
               {showTag && (
-                <div className="absolute right-0 top-full mt-1 w-60 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-pop z-30 p-2.5 space-y-2">
-                  <div className="flex bg-zinc-100 dark:bg-zinc-900 p-0.5 rounded-md">
+                <div className="absolute right-0 top-full mt-1 w-60 bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-pop z-30 p-2.5 space-y-2">
+                  <div className="ui-segmented w-full grid grid-cols-2">
                     <button
                       type="button"
                       onClick={() => setTagMode('add')}
-                      className={`flex-1 py-1 text-[11px] font-semibold rounded transition-colors ${
-                        tagMode === 'add'
-                          ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-sm'
-                          : 'text-zinc-500 dark:text-zinc-400'
-                      }`}
+                      className={`ui-segmented-btn ${tagMode === 'add' ? 'is-active' : ''}`}
                     >
                       {t('addTags')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setTagMode('remove')}
-                      className={`flex-1 py-1 text-[11px] font-semibold rounded transition-colors ${
-                        tagMode === 'remove'
-                          ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 shadow-sm'
-                          : 'text-zinc-500 dark:text-zinc-400'
-                      }`}
+                      className={`ui-segmented-btn ${tagMode === 'remove' ? 'is-active' : ''}`}
                     >
                       {t('removeTags')}
                     </button>
@@ -313,9 +290,11 @@ export function SearchBar({
                       }
                     }}
                     placeholder="tag1, tag2"
-                    className="brand-input-sm w-full dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
+                    className="ui-input w-full"
                   />
-                  <p className="text-[10.5px] text-zinc-400">{t('pressEnterToApply')}</p>
+                  <p className="text-[10.5px] text-[var(--text-muted)] m-0">
+                    {t('pressEnterToApply')}
+                  </p>
                 </div>
               )}
             </div>
@@ -323,42 +302,25 @@ export function SearchBar({
 
           {selectedCount > 0 && !isTrashView && onBulkPin && (
             <>
-              <button
-                type="button"
-                onClick={() => onBulkPin(true)}
-                className="flex items-center gap-1.5 px-2.5 h-8 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 rounded-md text-[12px] font-medium hover:bg-zinc-50 dark:hover:bg-zinc-700"
-              >
-                <Pin className="w-3.5 h-3.5" /> {t('pin')}
-              </button>
-              <button
-                type="button"
-                onClick={() => onBulkPin(false)}
-                className="flex items-center gap-1.5 px-2.5 h-8 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 rounded-md text-[12px] font-medium hover:bg-zinc-50 dark:hover:bg-zinc-700"
-              >
+              <Button variant="secondary" size="sm" onClick={() => onBulkPin(true)}>
+                <Pin size={13} /> {t('pin')}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => onBulkPin(false)}>
                 {t('unpin')}
-              </button>
+              </Button>
             </>
           )}
 
           {selectedCount > 0 && (
-            <button
-              type="button"
-              onClick={onBulkDelete}
-              className="flex items-center gap-1.5 px-3 h-8 bg-red-600 hover:bg-red-700 text-white rounded-md text-[12.5px] font-medium transition-colors shadow-sm"
-            >
-              <Trash2 className="w-3.5 h-3.5" />{' '}
-              {isTrashView ? t('deletePermanently') : t('moveToTrash')}
-            </button>
+            <Button variant="danger" size="sm" onClick={onBulkDelete}>
+              <Trash2 size={13} /> {isTrashView ? t('deletePermanently') : t('moveToTrash')}
+            </Button>
           )}
 
           {onCancelSelectMode && (
-            <button
-              type="button"
-              onClick={onCancelSelectMode}
-              className="px-2.5 h-8 text-brand-700 dark:text-brand-300 hover:bg-brand-100/60 dark:hover:bg-brand-900/40 rounded-md text-[12.5px] font-medium transition-colors"
-            >
+            <Button variant="ghost" size="sm" onClick={onCancelSelectMode}>
               {t('cancel')}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -371,23 +333,24 @@ export function SearchBar({
     (viewMode === 'folder' || viewMode === 'grid');
 
   return (
-    <div className="border-b border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0 z-20 relative">
+    <div className="border-b border-[var(--border)] bg-[var(--surface)] shrink-0 z-20 relative">
       <div className="flex items-center justify-between gap-2.5 py-2.5 px-5">
         <div className="flex flex-1 min-w-0 items-center gap-2">
           {onSelectAll && !isSelectMode && onToggleSelectMode && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
+              iconOnly
               onClick={onToggleSelectMode}
               title={t('selectMultiple')}
               aria-label={t('selectMultiple')}
-              className="btn-icon-sm shrink-0 dark:hover:bg-zinc-800"
             >
-              <CheckSquare className="w-4 h-4" />
-            </button>
+              <CheckSquare size={15} />
+            </Button>
           )}
 
-          <div ref={filterPopRef} className="relative flex-1 min-w-[140px] max-w-lg">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+          <div ref={filterPopRef} className="relative flex-1 min-w-[160px] max-w-lg">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)] pointer-events-none" />
             <input
               ref={inputRef}
               type="text"
@@ -395,14 +358,14 @@ export function SearchBar({
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t('searchPlaceholder')}
               aria-label={t('searchPlaceholder')}
-              className="w-full h-9 pl-9 pr-14 rounded-lg bg-zinc-100/90 dark:bg-zinc-800 border border-transparent text-[13px] font-medium text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:bg-white dark:focus:bg-zinc-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition-all"
+              className="ui-input w-full !pl-8 !pr-14 bg-[var(--surface-2)] focus:bg-[var(--surface)]"
             />
             <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => onSearchChange('')}
-                  className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded"
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text)] rounded"
                   title={t('clearSearch')}
                   aria-label={t('clearSearch')}
                 >
@@ -414,8 +377,8 @@ export function SearchBar({
                 onClick={() => setShowOperators((v) => !v)}
                 className={`p-1 rounded transition-colors ${
                   showOperators
-                    ? 'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-                    : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                    ? 'bg-[rgba(59,130,246,0.14)] text-[var(--accent)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
                 title={t('searchOperators')}
                 aria-label={t('searchOperators')}
@@ -426,8 +389,8 @@ export function SearchBar({
             </div>
 
             {showOperators && (
-              <div className="absolute left-0 top-full mt-1.5 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-pop z-30 p-2.5 animate-scale-in">
-                <p className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-1.5 pb-1.5">
+              <div className="absolute left-0 top-full mt-1.5 w-72 bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-pop z-30 p-2 animate-scale-in">
+                <p className="text-[10.5px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] px-2 pb-1.5 m-0">
                   {t('searchOperators')}
                 </p>
                 <div className="grid grid-cols-1 gap-0.5">
@@ -436,12 +399,12 @@ export function SearchBar({
                       key={op.token}
                       type="button"
                       onClick={() => insertOperator(op.token)}
-                      className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                      className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-[6px] text-left hover:bg-[var(--surface-2)] transition-colors"
                     >
-                      <code className="text-[11.5px] font-mono font-semibold text-brand-600 dark:text-brand-400">
+                      <code className="text-[11.5px] font-mono font-semibold text-[var(--accent)]">
                         {op.token.trim()}
                       </code>
-                      <span className="text-[11.5px] text-zinc-500 dark:text-zinc-400 truncate">
+                      <span className="text-[11.5px] text-[var(--text-muted)] truncate">
                         {op.desc}
                       </span>
                     </button>
@@ -454,25 +417,26 @@ export function SearchBar({
 
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
           {onOpenCommandPalette && (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={onOpenCommandPalette}
               title={`${t('commandPalette')} (Ctrl/⌘+K)`}
-              className="hidden md:inline-flex items-center gap-1 h-8 px-2 rounded-md border border-zinc-200/80 dark:border-zinc-700 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800/70 dark:hover:bg-zinc-800 text-[11px] font-mono font-medium text-zinc-500 dark:text-zinc-400 transition-colors"
+              className="hidden md:inline-flex !px-2 !gap-1 font-mono !text-[11px] !text-[var(--text-muted)]"
             >
-              <Command className="w-3 h-3" />
+              <Command size={12} />
               <span>K</span>
-            </button>
+            </Button>
           )}
 
           {onSortChange && (
             <Dropdown<SortOrder>
               size="sm"
-              className="w-[116px]"
+              className="min-w-[136px]"
               value={sortOrder}
               onChange={onSortChange}
               ariaLabel="Sort bookmarks"
-              buttonLeading={<ArrowDownAZ className="w-3.5 h-3.5 text-zinc-400" />}
+              buttonLeading={<ArrowDownAZ className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
               options={[
                 { value: 'newest', label: t('newest') },
                 { value: 'oldest', label: t('oldest') },
@@ -485,110 +449,94 @@ export function SearchBar({
           )}
 
           {showColumnPicker && onLayoutColumnsChange && layoutColumns && (
-            <div className="hidden sm:flex items-center bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/80 dark:border-zinc-700">
+            <div className="hidden sm:inline-flex ui-segmented !p-[2px]">
               {([1, 2, 3, 4, 5] as const).map((col) => (
                 <button
                   key={col}
                   type="button"
                   onClick={() => onLayoutColumnsChange(col)}
-                  className={`p-1 rounded-md transition-all ${
-                    layoutColumns === col
-                      ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-50 ring-1 ring-zinc-200/60 dark:ring-zinc-600'
-                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                  className={`ui-segmented-btn !h-[24px] !px-2 !text-[11px] tabular-nums ${
+                    layoutColumns === col ? 'is-active' : ''
                   }`}
                   title={t('columnsCount', { n: String(col) })}
                   aria-label={t('columnsCount', { n: String(col) })}
                 >
-                  <span className="text-[11px] font-semibold w-4 h-4 flex items-center justify-center tabular-nums">
-                    {col}
-                  </span>
+                  {col}
                 </button>
               ))}
             </div>
           )}
 
           {!hideViewToggle && (
-            <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/80 dark:border-zinc-700">
+            <div className="ui-segmented !p-[2px]">
               <button
                 type="button"
                 onClick={() => onViewModeChange('grid')}
-                className={`p-1.5 rounded-md transition-all ${
-                  viewMode === 'grid'
-                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-50 ring-1 ring-zinc-200/60 dark:ring-zinc-600'
-                    : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-                }`}
+                className={`ui-segmented-btn !h-[26px] !px-2 ${viewMode === 'grid' ? 'is-active' : ''}`}
                 title={t('viewGrid')}
                 aria-label={t('viewGrid')}
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
+                <LayoutGrid size={14} />
               </button>
               <button
                 type="button"
                 onClick={() => onViewModeChange('masonry')}
-                className={`p-1.5 rounded-md transition-all ${
-                  viewMode === 'masonry'
-                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-50 ring-1 ring-zinc-200/60 dark:ring-zinc-600'
-                    : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-                }`}
+                className={`ui-segmented-btn !h-[26px] !px-2 ${viewMode === 'masonry' ? 'is-active' : ''}`}
                 title={t('viewMasonry')}
                 aria-label={t('viewMasonry')}
               >
-                <LayoutDashboard className="w-3.5 h-3.5" />
+                <LayoutDashboard size={14} />
               </button>
               <button
                 type="button"
                 onClick={() => onViewModeChange('list')}
-                className={`p-1.5 rounded-md transition-all ${
-                  viewMode === 'list'
-                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-50 ring-1 ring-zinc-200/60 dark:ring-zinc-600'
-                    : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-                }`}
+                className={`ui-segmented-btn !h-[26px] !px-2 ${viewMode === 'list' ? 'is-active' : ''}`}
                 title={t('viewList')}
                 aria-label={t('viewList')}
               >
-                <LayoutList className="w-3.5 h-3.5" />
+                <LayoutList size={14} />
               </button>
               {allowFolderView && (
                 <button
                   type="button"
                   onClick={() => onViewModeChange('folder')}
-                  className={`p-1.5 rounded-md transition-all ${
-                    viewMode === 'folder'
-                      ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-50 ring-1 ring-zinc-200/60 dark:ring-zinc-600'
-                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-                  }`}
+                  className={`ui-segmented-btn !h-[26px] !px-2 ${viewMode === 'folder' ? 'is-active' : ''}`}
                   title={t('viewFolder')}
                   aria-label={t('viewFolder')}
                 >
-                  <FolderTree className="w-3.5 h-3.5" />
+                  <FolderTree size={14} />
                 </button>
               )}
             </div>
           )}
 
           {currentTabBookmarked && onEditCurrent ? (
-            <button type="button" onClick={onEditCurrent} className="btn-brand-sm whitespace-nowrap">
-              <Edit className="w-4 h-4" /> {t('editBookmark')}
-            </button>
+            <Button variant="primary" size="sm" onClick={onEditCurrent}>
+              <Edit size={14} />
+              <span>{t('editBookmark')}</span>
+            </Button>
           ) : (
-            <button type="button" onClick={onAdd} className="btn-brand-sm whitespace-nowrap">
-              <Plus className="w-4 h-4" /> {t('add')}
-            </button>
+            <Button variant="primary" size="sm" onClick={onAdd}>
+              <Plus size={14} />
+              <span>{t('add')}</span>
+            </Button>
           )}
         </div>
       </div>
 
       {hasActiveFilters && (
         <div className="px-5 pb-2.5 flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] font-semibold text-zinc-400 mr-0.5">{t('filters')}</span>
+          <span className="text-[11px] font-semibold text-[var(--text-muted)] mr-0.5">
+            {t('filters')}
+          </span>
           {searchQuery.trim() && (
             <button
               type="button"
               onClick={() => onSearchChange('')}
-              className="group inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-brand-50 dark:bg-brand-950 border border-brand-200 dark:border-brand-800 text-[11px] font-medium text-brand-700 dark:text-brand-300 hover:bg-brand-100 transition-colors"
+              className="group inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-[rgba(59,130,246,0.12)] border border-[color-mix(in_srgb,var(--accent)_35%,var(--border))] text-[11px] font-medium text-[var(--accent)] hover:bg-[rgba(59,130,246,0.18)] transition-colors"
               title={t('clearSearch')}
             >
-              <Search className="w-3 h-3 opacity-70" />
+              <Search className="w-3 h-3 opacity-75" />
               <span className="max-w-[160px] truncate">{searchQuery.trim()}</span>
               <X className="w-3 h-3 ml-0.5 opacity-60 group-hover:opacity-100" />
             </button>
@@ -598,7 +546,7 @@ export function SearchBar({
               key={tag}
               type="button"
               onClick={() => onRemoveTag?.(tag)}
-              className="group inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-[11px] font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+              className="group inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[11px] font-medium text-[var(--text)] hover:border-[var(--text-muted)] transition-colors"
             >
               <Hash className="w-3 h-3 opacity-70" />
               <span className="max-w-[140px] truncate">{tag}</span>
@@ -609,7 +557,7 @@ export function SearchBar({
             <button
               type="button"
               onClick={onClearAllFilters}
-              className="ml-1 text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              className="ml-1 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
             >
               {t('clearAll')}
             </button>

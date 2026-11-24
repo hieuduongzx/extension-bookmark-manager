@@ -110,9 +110,12 @@ export interface ToastAction {
   onClick: () => void | Promise<void>;
 }
 
+export type ToastType = 'success' | 'error' | 'info';
+
 export interface ToastItem {
   id: number;
   msg: string;
+  type?: ToastType;
   action?: ToastAction;
 }
 
@@ -130,10 +133,10 @@ export function useToastQueue() {
   }, []);
 
   const show = useCallback(
-    (msg: string, action?: ToastAction) => {
+    (msg: string, action?: ToastAction, type: ToastType = 'info') => {
       counterRef.current += 1;
       const id = counterRef.current;
-      setToasts((prev) => [...prev, { id, msg, action }]);
+      setToasts((prev) => [...prev.slice(-2), { id, msg, type, action }]);
 
       const duration = action ? 5000 : 2500;
       const timer = window.setTimeout(() => {

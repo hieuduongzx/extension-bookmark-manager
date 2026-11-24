@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BookmarkPlus,
   Check,
-  Cloud,
-  CloudOff,
   CornerDownRight,
+  ExternalLink,
   Folder,
+  FolderOpen,
+  Globe,
   Hash,
+  LayoutGrid,
   Maximize2,
   Pin,
   Plus,
+  RefreshCw,
+  Search,
   Settings,
   StickyNote,
   Trash2,
@@ -21,15 +26,21 @@ import {
   findBookmarkByUrl,
   findRelatedRootBookmarks,
   flattenCollectionTree,
+  fuzzyMatch,
+  getCollectionTags,
   getDomain,
   getFavicon,
   getFaviconFallback,
-  getCollectionTags,
   normalizeUrlInput,
 } from '../utils';
 import { createT } from '../i18n';
+import { getCollectionColorText, getCollectionIcon } from '../collectionIcons';
 import { Dropdown } from './Dropdown';
+import { Button } from './ui/Button';
+import { DriveStatusDot, ReauthBanner } from './ui/DriveStatus';
 import type { GDriveUiStatus } from '../driveSync';
+
+type PopupTab = 'save' | 'browse';
 
 interface QuickSaveProps {
   bookmarks: Bookmark[];
@@ -40,7 +51,7 @@ interface QuickSaveProps {
     data: Omit<Bookmark, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
   ) => Promise<void>;
   onRemove?: (id: string) => Promise<void>;
-  onOpenLibrary: () => void;
+  onOpenLibrary: (collectionId?: string) => void;
   onOpenDashboard: () => void;
   onOpenPreferences?: () => void;
   onOpenGDrive?: () => void;
@@ -66,7 +77,11 @@ export function QuickSave({
   onQuickAddCollection,
 }: QuickSaveProps) {
   const t = useMemo(() => createT(settings.locale), [settings.locale]);
+  const [activeTab, setActiveTab] = useState<PopupTab>('save');
+  const [browseQuery, setBrowseQuery] = useState('');
+
   const [url, setUrl] = useState('');
+  const [isManualUrl, setIsManualUrl] = useState(false);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -115,10 +130,12 @@ export function QuickSave({
         tab.url.startsWith('chrome://') ||
         tab.url.startsWith('chrome-extension://')
       ) {
+        setIsManualUrl(true);
         setHydrated(true);
         return;
       }
 
+      setIsManualUrl(false);
       const existing = findBookmarkByUrl(bookmarks, tab.url);
       if (existing) {
         setUrl(existing.url);
@@ -161,16 +178,52 @@ export function QuickSave({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot hydrate
   }, [bookmarks, settings.defaultCollectionId]);
 
-  const collectionOptions = useMemo(() => {
-    const tree = flattenCollectionTree(buildCollectionTree(collections));
-    return [
+  const nonTrashBookmarks = useMemo(
+    () => bookmarks.filter((b) => b.collectionId !== COLLECTION.TRASH),
+    [bookmarks]
+  );
+
+  const collectionTree = useMemo(
+    () => flattenCollectionTree(buildCollectionTree(collections)),
+    [collections]
+  );
+
+  const collectionOptions = useMemo(
+    () => [
       { value: COLLECTION.UNSORTED, label: t('unsorted') },
-      ...tree.map((c) => ({
+      ...collectionTree.map((c) => ({
         value: c.id,
-        label: `${'—'.repeat(c.depth)} ${c.name}`.trim(),
+        label: c.name,
+        depth: c.depth,
       })),
-    ];
-  }, [collections, t]);
+    ],
+    [collectionTree, t]
+  );
+
+  const collectionCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const b of nonTrashBookmarks) {
+      map.set(b.collectionId, (map.get(b.collectionId) || 0) + 1);
+    }
+    return map;
+  }, [nonTrashBookmarks]);
+
+  const filteredBrowseCollections = useMemo(() => {
+    const q = browseQuery.trim();
+    if (!q) return collectionTree;
+    return collectionTree.filter((c) => fuzzyMatch(q, c.name));
+  }, [collectionTree, browseQuery]);
+
+  const filteredBrowseBookmarks = useMemo(() => {
+    const q = browseQuery.trim();
+    const sorted = [...nonTrashBookmarks].sort(
+      (a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.createdAt - a.createdAt
+    );
+    if (!q) return sorted.slice(0, 6);
+    return sorted
+      .filter((b) => fuzzyMatch(q, `${b.title} ${b.url} ${b.tags.join(' ')}`))
+      .slice(0, 10);
+  }, [nonTrashBookmarks, browseQuery]);
 
   const handleCreateCollection = async () => {
     const name = newCollectionName.trim();
@@ -200,7 +253,7 @@ export function QuickSave({
     }
   };
 
-  const isEditMode = !!editingId;
+  const isEditMode = Boolean(editingId);
 
   const duplicate = useMemo(() => {
     if (isEditMode) return null;
@@ -300,376 +353,592 @@ export function QuickSave({
     });
   };
 
+  const driveTitle = gdrive?.needsReauth
+    ? t('gdriveStatusNeedsReauth')
+    : gdrive?.busy
+      ? t('gdriveSyncing')
+      : gdrive?.connected
+        ? `${t('gdriveStatusSynced')}${gdrive.email ? ` · ${gdrive.email}` : ''}`
+        : t('gdriveMenuTitle');
+
+  const subtitleText = t('popupSubtitle', {
+    bookmarks: String(nonTrashBookmarks.length),
+    collections: String(collections.length),
+  });
+
+  const normalizedPreviewUrl = normalizeUrlInput(url);
+
   return (
     <div
-      className="w-[384px] min-h-[430px] max-h-[580px] flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+      className="popup-shell"
       onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !isSaving && url && hydrated && !saved) {
+        if (
+          activeTab === 'save' &&
+          (e.ctrlKey || e.metaKey) &&
+          e.key === 'Enter' &&
+          !isSaving &&
+          normalizedPreviewUrl &&
+          hydrated &&
+          !saved
+        ) {
           e.preventDefault();
           void handleSave();
         }
       }}
     >
-      <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-200/80 dark:border-zinc-800">
-        <div className="flex items-center gap-2.5 min-w-0">
+      {/* 1. Fixed 1-line Header (*2k standard) */}
+      <header className="popup-header">
+        <div className="popup-brand">
           <img
             src={chrome.runtime.getURL('public/icons/icon-48.png')}
-            alt=""
-            className="w-6 h-6 rounded-md shrink-0"
+            alt="Bookmark Manager"
+            className="popup-logo"
           />
-          <div className="min-w-0">
-            <h1 className="text-[13.5px] font-bold tracking-tight truncate">
-              {isEditMode ? t('editBookmark') : t('quickSave')}
-            </h1>
-            {isEditMode && (
-              <p className="text-[11px] text-brand-600 dark:text-brand-400 font-medium leading-none mt-0.5">
-                {t('alreadySaved')}
-              </p>
-            )}
+          <div className="popup-brand-info">
+            <div className="popup-title-row">
+              <span className="popup-title">{t('appBrand')}</span>
+              {(onOpenGDrive || onSyncGDrive) && (
+                <DriveStatusDot
+                  gdrive={gdrive}
+                  title={driveTitle}
+                  onClick={() => {
+                    if (gdrive?.connected && !gdrive.needsReauth && onSyncGDrive) {
+                      onSyncGDrive();
+                    } else if (onOpenGDrive) {
+                      onOpenGDrive();
+                    }
+                  }}
+                />
+              )}
+            </div>
+            <div className="popup-subtitle">{subtitleText}</div>
           </div>
         </div>
-        <div className="flex items-center gap-0.5">
-          {(onOpenGDrive || onSyncGDrive) && (
+
+        <div className="popup-header-actions">
+          {gdrive?.connected && !gdrive.needsReauth && onSyncGDrive && (
             <button
               type="button"
-              onClick={() => {
-                if (gdrive?.connected && onSyncGDrive) onSyncGDrive();
-                else if (onOpenGDrive) onOpenGDrive();
-                else onSyncGDrive?.();
-              }}
-              className={`btn-icon-sm dark:hover:bg-zinc-800 relative ${
-                gdrive?.connected
-                  ? 'text-brand-600 dark:text-brand-400'
-                  : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
-              }`}
-              title={
-                gdrive?.needsReauth
-                  ? t('gdriveStatusNeedsReauth')
-                  : gdrive?.connected
-                  ? `${t('gdriveMenuSync')}${gdrive.email ? ` · ${gdrive.email}` : ''}`
-                  : t('gdriveMenuTitle')
-              }
-              aria-label={t('gdriveMenuTitle')}
+              className="popup-icon-btn"
+              onClick={onSyncGDrive}
+              disabled={gdrive.busy}
+              title={t('gdriveMenuSync')}
+              aria-label={t('gdriveMenuSync')}
             >
-              {gdrive?.connected ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
-              {(!gdrive?.connected || gdrive?.needsReauth) && (
-                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
-              )}
+              <RefreshCw size={15} className={gdrive.busy ? 'ui-spin' : ''} />
             </button>
           )}
           <button
             type="button"
+            className="popup-icon-btn"
             onClick={onOpenDashboard}
-            className="btn-icon-sm dark:hover:bg-zinc-800"
             title={t('openDashboard')}
             aria-label={t('openDashboard')}
           >
-            <Maximize2 className="w-4 h-4" />
+            <Maximize2 size={15} />
           </button>
-          <button
-            type="button"
-            onClick={onOpenLibrary}
-            className="px-2 h-7 text-[12px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-          >
-            {t('openLibrary')}
-          </button>
-        </div>
-      </header>
-      <div className="accent-line shrink-0" />
-
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-3 space-y-3">
-        {/* Page preview + Pin quick toggle */}
-        <div className="flex items-center gap-3 p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
-          <img
-            src={favicon || getFaviconFallback(url)}
-            alt=""
-            className="w-8 h-8 rounded-lg bg-white dark:bg-zinc-700 p-1 border border-zinc-200/60 dark:border-zinc-600 shrink-0"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = getFaviconFallback(url);
-            }}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold text-zinc-800 dark:text-zinc-100 truncate">
-              {url ? getDomain(url) : '—'}
-            </p>
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5" title={url}>
-              {url || '—'}
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={!hydrated || isSaving || saved}
-            onClick={() => setPinned((p) => !p)}
-            title={pinned ? t('unpinBookmark') : t('pinBookmark')}
-            aria-label={pinned ? t('unpinBookmark') : t('pinBookmark')}
-            aria-pressed={pinned}
-            className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
-              pinned
-                ? 'bg-brand-50 border-brand-200 text-brand-600 dark:bg-brand-950/60 dark:border-brand-800 dark:text-brand-400'
-                : 'bg-white border-zinc-200 text-zinc-400 hover:text-zinc-700 dark:bg-zinc-800 dark:border-zinc-700 dark:hover:text-zinc-200'
-            }`}
-          >
-            <Pin className={`w-3.5 h-3.5 ${pinned ? 'fill-current' : ''}`} />
-          </button>
-        </div>
-
-        {duplicate && !isEditMode && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[12px] text-amber-800 dark:text-amber-200">
-            <span className="flex-1">{t('duplicateWarning')}</span>
+          {onOpenPreferences && (
             <button
               type="button"
-              className="font-semibold underline"
-              onClick={() => enterEditFromDuplicate(duplicate)}
+              className="popup-icon-btn"
+              onClick={onOpenPreferences}
+              title={t('settings')}
+              aria-label={t('settings')}
             >
-              {t('updateExisting')}
+              <Settings size={15} />
             </button>
-          </div>
-        )}
+          )}
+        </div>
+      </header>
 
-        {!duplicate && relatedRoots.length > 0 && (
-          <div className="px-3 py-2 rounded-lg bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-[12px] text-sky-800 dark:text-sky-200">
-            <p className="flex items-center gap-1.5 font-medium">
-              <CornerDownRight className="w-3.5 h-3.5 shrink-0" />
-              {t('relatedBookmarkExists')}
-            </p>
-            <ul className="mt-1.5 space-y-1">
-              {relatedRoots.map((root) => (
-                <li key={root.id} className="flex items-center gap-1.5 min-w-0">
-                  <img
-                    src={root.favicon || getFavicon(root.url)}
-                    alt=""
-                    className="w-3.5 h-3.5 rounded-sm shrink-0"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = getFaviconFallback(root.url);
-                    }}
-                  />
-                  <span className="truncate" title={root.url}>
-                    {root.title || getDomain(root.url)}
+      {/* Drive needs_reauth Banner (*2k standard) */}
+      {gdrive?.needsReauth && onOpenGDrive && (
+        <ReauthBanner
+          message={t('popupReauthBanner')}
+          actionLabel={t('gdriveReconnect')}
+          busy={gdrive.busy}
+          onAction={onOpenGDrive}
+        />
+      )}
+
+      {/* 2. Segmented 2-Tab Bar (*2k standard) */}
+      <div className="popup-tabs-wrap">
+        <div className="popup-tabs" role="tablist" aria-label="Popup navigation">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'save'}
+            className={`popup-tab ${activeTab === 'save' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('save')}
+          >
+            <BookmarkPlus size={13} />
+            <span>{t('popupTabSave')}</span>
+            {isEditMode && (
+              <span className="popup-tab-pill popup-tab-pill--accent">{t('savedBadge')}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'browse'}
+            className={`popup-tab ${activeTab === 'browse' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('browse')}
+          >
+            <Folder size={13} />
+            <span>{t('popupTabBrowse')}</span>
+            <span className="popup-tab-pill popup-tab-pill--muted">
+              {nonTrashBookmarks.length}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Scrollable Content */}
+      <main className="popup-body custom-scrollbar">
+        {activeTab === 'save' ? (
+          <div className="popup-panel">
+            {/* Page Preview / Manual URL Card */}
+            {isManualUrl ? (
+              <div className="popup-card space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="popup-field-label !mb-0">
+                    <Globe size={12} /> {t('url')}
                   </span>
                   <button
                     type="button"
-                    className="ml-auto text-[11px] font-semibold underline shrink-0"
-                    onClick={() => enterEditFromDuplicate(root)}
+                    disabled={!hydrated || isSaving || saved}
+                    onClick={() => setPinned((p) => !p)}
+                    title={pinned ? t('unpinBookmark') : t('pinBookmark')}
+                    aria-label={pinned ? t('unpinBookmark') : t('pinBookmark')}
+                    aria-pressed={pinned}
+                    className={`popup-icon-btn !w-6 !h-6 ${
+                      pinned ? 'text-[var(--accent)] bg-[rgba(59,130,246,0.14)]' : ''
+                    }`}
                   >
-                    {t('editRelated')}
+                    <Pin size={13} className={pinned ? 'fill-current' : ''} />
                   </button>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-1.5 text-[11px] text-sky-600 dark:text-sky-400">
-              {t('saveSeparately')}
-            </p>
-          </div>
-        )}
+                </div>
+                <input
+                  type="text"
+                  inputMode="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder={t('popupEnterUrl')}
+                  disabled={!hydrated || isSaving || saved}
+                  className="ui-input w-full"
+                />
+              </div>
+            ) : (
+              <div className="popup-preview-card">
+                <div className="popup-favicon-box">
+                  <img
+                    src={favicon || getFaviconFallback(url)}
+                    alt=""
+                    className="w-5 h-5"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = getFaviconFallback(url);
+                    }}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-semibold text-[var(--text)] truncate leading-tight">
+                    {url ? getDomain(url) : '—'}
+                  </p>
+                  <p
+                    className="text-[11px] text-[var(--text-muted)] truncate mt-0.5 leading-tight"
+                    title={url}
+                  >
+                    {url || '—'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={!hydrated || isSaving || saved}
+                  onClick={() => setPinned((p) => !p)}
+                  title={pinned ? t('unpinBookmark') : t('pinBookmark')}
+                  aria-label={pinned ? t('unpinBookmark') : t('pinBookmark')}
+                  aria-pressed={pinned}
+                  className={`popup-icon-btn shrink-0 border ${
+                    pinned
+                      ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[rgba(59,130,246,0.12)] text-[var(--accent)]'
+                      : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)]'
+                  }`}
+                >
+                  <Pin size={13} className={pinned ? 'fill-current' : ''} />
+                </button>
+              </div>
+            )}
 
-        <label className="block space-y-1">
-          <span className="section-label">{t('title')}</span>
-          <input
-            ref={titleInputRef}
-            type="text"
-            name="bookmark-title"
-            autoComplete="off"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={t('titlePlaceholder')}
-            disabled={!hydrated || isSaving || saved}
-            className="brand-input-sm w-full dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
-          />
-        </label>
+            {duplicate && !isEditMode && (
+              <div className="ui-notice ui-notice--warn items-center">
+                <span className="flex-1 min-w-0">{t('duplicateWarning')}</span>
+                <button
+                  type="button"
+                  className="font-semibold text-[var(--accent)] hover:underline whitespace-nowrap shrink-0"
+                  onClick={() => enterEditFromDuplicate(duplicate)}
+                >
+                  {t('updateExisting')}
+                </button>
+              </div>
+            )}
 
-        <div className="block space-y-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className="section-label flex items-center gap-1">
-              <Folder className="w-3 h-3" /> {t('collection')}
-            </span>
-            {onQuickAddCollection && !isCreatingCollection && (
-              <button
-                type="button"
-                onClick={() => setIsCreatingCollection(true)}
-                disabled={!hydrated || isSaving || saved}
-                className="text-[11px] font-medium text-brand-600 dark:text-brand-400 hover:text-brand-500 inline-flex items-center gap-0.5 disabled:opacity-50"
-              >
-                <Plus className="w-3 h-3" /> {t('newCollection')}
-              </button>
+            {!duplicate && relatedRoots.length > 0 && (
+              <div className="ui-notice ui-notice--info flex-col !gap-1.5">
+                <p className="flex items-center gap-1.5 font-medium m-0">
+                  <CornerDownRight size={13} className="shrink-0 text-[var(--accent)]" />
+                  <span>{t('relatedBookmarkExists')}</span>
+                </p>
+                <ul className="w-full space-y-1 m-0 p-0 list-none">
+                  {relatedRoots.map((root) => (
+                    <li key={root.id} className="flex items-center gap-1.5 min-w-0">
+                      <img
+                        src={root.favicon || getFavicon(root.url)}
+                        alt=""
+                        className="w-3.5 h-3.5 rounded-sm shrink-0"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = getFaviconFallback(root.url);
+                        }}
+                      />
+                      <span className="truncate flex-1" title={root.url}>
+                        {root.title || getDomain(root.url)}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-[11px] font-semibold text-[var(--accent)] hover:underline shrink-0"
+                        onClick={() => enterEditFromDuplicate(root)}
+                      >
+                        {t('editRelated')}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Main Form Card */}
+            <div className="popup-card space-y-3">
+              <label className="block">
+                <span className="popup-field-label">{t('title')}</span>
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  name="bookmark-title"
+                  autoComplete="off"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={t('titlePlaceholder')}
+                  disabled={!hydrated || isSaving || saved}
+                  className="ui-input w-full"
+                />
+              </label>
+
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="popup-field-label !mb-0">
+                    <Folder size={12} /> {t('collection')}
+                  </span>
+                  {onQuickAddCollection && !isCreatingCollection && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingCollection(true)}
+                      disabled={!hydrated || isSaving || saved}
+                      className="text-[11.5px] font-medium text-[var(--accent)] hover:underline inline-flex items-center gap-0.5 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <Plus size={12} /> {t('newCollection')}
+                    </button>
+                  )}
+                </div>
+
+                {isCreatingCollection && onQuickAddCollection ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newCollectionName}
+                      onChange={(e) => setNewCollectionName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void handleCreateCollection();
+                        }
+                        if (e.key === 'Escape') {
+                          setIsCreatingCollection(false);
+                          setNewCollectionName('');
+                        }
+                      }}
+                      placeholder={t('newCollectionPlaceholder')}
+                      disabled={creatingCollection}
+                      className="ui-input flex-1 min-w-0"
+                    />
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      iconOnly
+                      onClick={() => void handleCreateCollection()}
+                      disabled={creatingCollection || !newCollectionName.trim()}
+                      aria-label={t('save')}
+                    >
+                      <Check size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      iconOnly
+                      onClick={() => {
+                        setIsCreatingCollection(false);
+                        setNewCollectionName('');
+                      }}
+                      disabled={creatingCollection}
+                      aria-label={t('cancel')}
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                ) : (
+                  <Dropdown
+                    size="sm"
+                    value={collectionId}
+                    onChange={setCollectionId}
+                    options={collectionOptions}
+                    ariaLabel={t('collection')}
+                    className="w-full"
+                    disabled={!hydrated || isSaving || saved}
+                    footerAction={
+                      onQuickAddCollection
+                        ? {
+                            label: t('newCollection'),
+                            leading: <Plus size={14} />,
+                            onClick: () => setIsCreatingCollection(true),
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+              </div>
+
+              <label className="block">
+                <span className="popup-field-label">
+                  <Hash size={12} /> {t('tags')}
+                </span>
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {tags.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTags((prev) => prev.filter((x) => x !== tag))}
+                        className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[11px] font-medium text-[var(--text)] hover:border-[var(--danger)] hover:text-[var(--danger)] transition-colors"
+                      >
+                        #{tag}
+                        <X size={11} className="opacity-70" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onFocus={() => setTagInputFocused(true)}
+                  onBlur={() => setTagInputFocused(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      addTag(tagInput);
+                    }
+                  }}
+                  placeholder={t('addTags')}
+                  className="ui-input w-full"
+                />
+                {tagSuggestions.length > 0 && (tagInputFocused || tagInput) && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {tagSuggestions.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => addTag(s)}
+                        className="text-[11px] px-2 py-0.5 rounded-full bg-[rgba(59,130,246,0.12)] text-[var(--accent)] hover:bg-[rgba(59,130,246,0.2)] font-medium transition-colors"
+                      >
+                        #{s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </label>
+
+              <label className="block">
+                <span className="popup-field-label">
+                  <StickyNote size={12} /> {t('note')}
+                </span>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={2}
+                  className="ui-textarea w-full min-h-[54px] resize-none"
+                  placeholder={t('notePlaceholder')}
+                />
+              </label>
+            </div>
+
+            {error && (
+              <div className="ui-notice ui-notice--danger" role="alert">
+                {error}
+              </div>
             )}
           </div>
-          {isCreatingCollection && onQuickAddCollection ? (
-            <div className="flex items-center gap-1.5">
-              <input
-                autoFocus
-                type="text"
-                value={newCollectionName}
-                onChange={(e) => setNewCollectionName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void handleCreateCollection();
-                  }
-                  if (e.key === 'Escape') {
-                    setIsCreatingCollection(false);
-                    setNewCollectionName('');
-                  }
-                }}
-                placeholder={t('newCollectionPlaceholder')}
-                disabled={creatingCollection}
-                className="brand-input-sm flex-1 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+        ) : (
+          /* === TAB 2: QUICK BROWSE (Collections + Recent Bookmarks) === */
+          <div className="popup-panel">
+            <div className="relative">
+              <Search
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none"
               />
-              <button
-                type="button"
-                onClick={() => void handleCreateCollection()}
-                disabled={creatingCollection || !newCollectionName.trim()}
-                className="btn-icon-sm dark:hover:bg-zinc-800 text-brand-600 disabled:opacity-50"
-                aria-label={t('save')}
-              >
-                {creatingCollection ? (
-                  <span className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCreatingCollection(false);
-                  setNewCollectionName('');
-                }}
-                disabled={creatingCollection}
-                className="btn-icon-sm dark:hover:bg-zinc-800"
-                aria-label={t('cancel')}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <Dropdown
-              value={collectionId}
-              onChange={setCollectionId}
-              options={collectionOptions}
-              ariaLabel={t('collection')}
-              className="w-full"
-              disabled={!hydrated || isSaving || saved}
-              footerAction={
-                onQuickAddCollection
-                  ? {
-                      label: t('newCollection'),
-                      leading: <Plus className="w-3.5 h-3.5" />,
-                      onClick: () => setIsCreatingCollection(true),
-                    }
-                  : undefined
-              }
-            />
-          )}
-        </div>
-
-        <label className="block space-y-1">
-          <span className="section-label flex items-center gap-1">
-            <Hash className="w-3 h-3" /> {t('tags')}
-          </span>
-          {tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-1">
-              {tags.map((tag) => (
+              <input
+                type="text"
+                value={browseQuery}
+                onChange={(e) => setBrowseQuery(e.target.value)}
+                placeholder={t('popupSearchPlaceholder')}
+                aria-label={t('popupSearchPlaceholder')}
+                className="ui-input w-full !pl-7 !pr-7 !h-[30px] !text-[12.5px]"
+              />
+              {browseQuery && (
                 <button
-                  key={tag}
                   type="button"
-                  onClick={() => setTags((prev) => prev.filter((x) => x !== tag))}
-                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[11px] font-medium hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40 dark:hover:text-red-300 transition-colors"
+                  onClick={() => setBrowseQuery('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 popup-icon-btn !w-5 !h-5"
+                  aria-label={t('clearSearch')}
                 >
-                  #{tag}
-                  <X className="w-3 h-3 opacity-60" />
+                  <X size={12} />
                 </button>
-              ))}
+              )}
             </div>
-          )}
-          <input
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onFocus={() => setTagInputFocused(true)}
-            onBlur={() => setTagInputFocused(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ',') {
-                e.preventDefault();
-                addTag(tagInput);
-              }
-            }}
-            placeholder={t('addTags')}
-            className="brand-input-sm w-full dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
-          />
-          {tagSuggestions.length > 0 && (tagInputFocused || tagInput) && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {tagSuggestions.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => addTag(s)}
-                  className="text-[11px] px-2 py-0.5 rounded-full bg-brand-50 hover:bg-brand-100 dark:bg-brand-950 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 transition-colors"
-                >
-                  #{s}
-                </button>
-              ))}
+
+            {filteredBrowseCollections.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="popup-field-label px-1.5">{t('collections')}</div>
+                {filteredBrowseCollections.slice(0, 8).map((col) => {
+                  const Icon = getCollectionIcon(col.icon);
+                  const count = collectionCounts.get(col.id) || 0;
+                  return (
+                    <button
+                      key={col.id}
+                      type="button"
+                      className="popup-row-item"
+                      style={{ paddingLeft: 8 + Math.min(col.depth, 3) * 14 }}
+                      onClick={() => onOpenLibrary(col.id)}
+                    >
+                      <Icon
+                        size={15}
+                        className={`shrink-0 ${getCollectionColorText(col.color, false)}`}
+                      />
+                      <span className="flex-1 min-w-0 truncate text-[12.5px] font-medium">
+                        {col.name}
+                      </span>
+                      <span className="popup-tab-pill popup-tab-pill--muted">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="space-y-0.5">
+              <div className="popup-field-label px-1.5">{t('popupRecent')}</div>
+              {filteredBrowseBookmarks.length === 0 ? (
+                <div className="popup-card text-center py-6 text-[12px] text-[var(--text-muted)]">
+                  {browseQuery.trim() ? t('noResults') : t('noBookmarks')}
+                </div>
+              ) : (
+                filteredBrowseBookmarks.map((bm) => (
+                  <button
+                    key={bm.id}
+                    type="button"
+                    className="popup-row-item group"
+                    onClick={() => {
+                      if (chrome?.tabs?.create) {
+                        void chrome.tabs.create({ url: bm.url });
+                        window.close();
+                      } else {
+                        window.open(bm.url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    title={bm.url}
+                  >
+                    <img
+                      src={bm.favicon || getFavicon(bm.url)}
+                      alt=""
+                      className="w-4 h-4 rounded-sm shrink-0"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = getFaviconFallback(bm.url);
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12.5px] font-medium truncate leading-tight">
+                        {bm.title || getDomain(bm.url)}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-muted)] truncate leading-tight">
+                        {getDomain(bm.url)}
+                      </div>
+                    </div>
+                    <ExternalLink
+                      size={12}
+                      className="shrink-0 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity"
+                    />
+                  </button>
+                ))
+              )}
             </div>
-          )}
-        </label>
-
-        <label className="block space-y-1">
-          <span className="section-label flex items-center gap-1">
-            <StickyNote className="w-3 h-3" /> {t('note')}
-          </span>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            className="w-full brand-input-sm min-h-[56px] py-2 resize-none dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
-            placeholder={t('notePlaceholder')}
-          />
-        </label>
-
-        {error && <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p>}
-      </div>
-
-      <footer className="px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex items-center gap-1.5 bg-zinc-50/50 dark:bg-zinc-900">
-        {onOpenPreferences && (
-          <button
-            type="button"
-            onClick={onOpenPreferences}
-            className="btn-icon-sm dark:hover:bg-zinc-800"
-            title={t('settings')}
-            aria-label={t('settings')}
-          >
-            <Settings className="w-4 h-4" />
-          </button>
+          </div>
         )}
+      </main>
 
-        {isEditMode && onRemove && (
-          <button
-            type="button"
-            disabled={isSaving || saved}
-            onClick={() => void handleRemove()}
-            className="btn-icon-sm text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-950/40"
-            title={t('moveToTrash')}
-            aria-label={t('moveToTrash')}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        )}
-
-        <button
-          type="button"
-          disabled={isSaving || !url || saved || !hydrated}
-          onClick={handleSave}
-          className="btn-brand-sm flex-1"
-        >
-          {saved ? (
-            <>
-              <Check className="w-4 h-4" /> {isEditMode ? t('bookmarkUpdated') : t('saved')}
-            </>
-          ) : isEditMode || duplicate ? (
-            t('update')
-          ) : (
-            t('save')
+      {/* 4. Clean 1-row Footer (strictly white-space: nowrap) */}
+      {activeTab === 'save' ? (
+        <footer className="popup-footer">
+          {isEditMode && onRemove && (
+            <Button
+              variant="danger-subtle"
+              iconOnly
+              disabled={isSaving || saved}
+              onClick={() => void handleRemove()}
+              title={t('moveToTrash')}
+              aria-label={t('moveToTrash')}
+            >
+              <Trash2 size={15} />
+            </Button>
           )}
-        </button>
-      </footer>
+          <Button variant="secondary" onClick={() => onOpenLibrary()}>
+            <FolderOpen size={14} />
+            <span>{t('libraryShort')}</span>
+          </Button>
+          <Button
+            variant="primary"
+            className="flex-1"
+            disabled={isSaving || !normalizedPreviewUrl || saved || !hydrated}
+            onClick={handleSave}
+          >
+            {saved ? (
+              <>
+                <Check size={15} />
+                <span>{isEditMode ? t('bookmarkUpdated') : t('saved')}</span>
+              </>
+            ) : (
+              <span>{isEditMode || duplicate ? t('update') : t('save')}</span>
+            )}
+          </Button>
+        </footer>
+      ) : (
+        <footer className="popup-footer popup-footer--grid">
+          <Button variant="secondary" onClick={() => onOpenLibrary()}>
+            <FolderOpen size={14} />
+            <span>{t('libraryShort')}</span>
+          </Button>
+          <Button variant="secondary" onClick={onOpenDashboard}>
+            <LayoutGrid size={14} />
+            <span>{t('manageLabel')}</span>
+          </Button>
+        </footer>
+      )}
     </div>
   );
 }

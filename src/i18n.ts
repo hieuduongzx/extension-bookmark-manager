@@ -276,6 +276,18 @@ const en = {
   confirm: 'Confirm',
   removeBookmark: 'Remove',
   addToCollection: 'Add bookmark here',
+  appBrand: 'Bookmark Manager',
+  appTagline: 'Bookmark organizer',
+  popupTabSave: 'Quick Save',
+  popupTabBrowse: 'Browse',
+  popupRecent: 'Recent bookmarks',
+  popupSearchPlaceholder: 'Search bookmarks or collections…',
+  popupReauthBanner: 'Google Drive sync needs sign-in',
+  popupSubtitle: '{bookmarks} bookmarks · {collections} collections',
+  popupEnterUrl: 'Paste or type a URL to save…',
+  libraryShort: 'Library',
+  manageLabel: 'Manage',
+  savedBadge: 'Saved',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -557,6 +569,18 @@ const vi: Record<TranslationKey, string> = {
   confirm: 'Xác nhận',
   removeBookmark: 'Xóa',
   addToCollection: 'Thêm bookmark vào đây',
+  appBrand: 'Bookmark Manager',
+  appTagline: 'Quản lý dấu trang',
+  popupTabSave: 'Lưu nhanh',
+  popupTabBrowse: 'Thư viện',
+  popupRecent: 'Gần đây',
+  popupSearchPlaceholder: 'Tìm bookmark hoặc bộ sưu tập…',
+  popupReauthBanner: 'Đồng bộ Drive cần đăng nhập lại',
+  popupSubtitle: '{bookmarks} bookmark · {collections} bộ sưu tập',
+  popupEnterUrl: 'Nhập hoặc dán URL để lưu…',
+  libraryShort: 'Thư viện',
+  manageLabel: 'Quản lý',
+  savedBadge: 'Đã lưu',
 };
 
 const dict: Record<LocaleCode, Record<TranslationKey, string>> = { en, vi };

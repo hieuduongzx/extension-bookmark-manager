@@ -4,6 +4,7 @@ import type { Bookmark, Collection, LocaleCode } from '../types';
 import { BookmarkPlus, Search, Trash2 } from 'lucide-react';
 import { COLLECTION } from '../types';
 import { createT } from '../i18n';
+import { Button } from './ui/Button';
 
 interface BookmarkListProps {
   bookmarks: Bookmark[];
@@ -12,7 +13,6 @@ interface BookmarkListProps {
   onCollectionClick?: (collectionId: string) => void;
   viewMode: 'grid' | 'list' | 'masonry';
   bookmarkColumns: 1 | 2 | 3 | 4 | 5;
-  /** bookmarkId → closest saved ancestor (for sub-page badges) */
   relatedRoots?: Map<string, Bookmark>;
   onEdit: (b: Bookmark) => void;
   onDelete: (id: string, isFromTrash: boolean) => void;
@@ -95,7 +95,6 @@ function BookmarkListInner({
     return () => ro.disconnect();
   }, [viewMode, bookmarks.length]);
 
-  // Virtualize only when every row has uniform height (no notes).
   const uniformRowHeight = useMemo(() => !bookmarks.some((b) => Boolean(b.note)), [bookmarks]);
 
   const virtual = useMemo(() => {
@@ -153,28 +152,28 @@ function BookmarkListInner({
 
     return (
       <div className="h-full flex flex-col items-center justify-center text-center px-6">
-        <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-700/80 rounded-2xl flex items-center justify-center mb-4 text-zinc-400 dark:text-zinc-500">
-          <EmptyIcon className="w-6 h-6" />
+        <div className="w-12 h-12 bg-[var(--surface)] border border-[var(--border)] rounded-[12px] flex items-center justify-center mb-3.5 text-[var(--text-muted)]">
+          <EmptyIcon className="w-5 h-5" />
         </div>
-        <p className="text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{title}</p>
-        <p className="text-[12.5px] text-zinc-500 dark:text-zinc-400 mt-1.5 max-w-[300px] leading-relaxed">
+        <p className="text-[14px] font-semibold text-[var(--text)] m-0">{title}</p>
+        <p className="text-[12.5px] text-[var(--text-muted)] mt-1.5 max-w-[300px] leading-relaxed m-0">
           {description}
         </p>
-        <div className="mt-5 flex items-center gap-2">
+        <div className="mt-4 flex items-center gap-2">
           {hasSearch && onClearSearch && (
-            <button type="button" onClick={onClearSearch} className="btn-ghost-sm">
+            <Button variant="secondary" size="sm" onClick={onClearSearch}>
               {t('clearSearch')}
-            </button>
+            </Button>
           )}
           {hasTags && onClearFilters && (
-            <button type="button" onClick={onClearFilters} className="btn-ghost-sm">
+            <Button variant="secondary" size="sm" onClick={onClearFilters}>
               {t('clearFilters')}
-            </button>
+            </Button>
           )}
           {!hasSearch && !hasTags && activeCollection !== COLLECTION.TRASH && onAdd && (
-            <button type="button" onClick={onAdd} className="btn-brand-sm">
+            <Button variant="primary" size="sm" onClick={onAdd}>
               {t('addBookmark')}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -225,13 +224,17 @@ function BookmarkListInner({
     return (
       <div
         ref={scrollRef}
-        className="h-full overflow-y-auto custom-scrollbar"
+        className="h-full overflow-y-auto custom-scrollbar px-5 pt-2 pb-6"
         onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
       >
-        <div className="flex flex-col w-full max-w-6xl mx-auto">
+        {/* Unified clean *2k surface card matching TubeDeck2k opt-group-list */}
+        <div className="w-full max-w-6xl mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden divide-y divide-[var(--border)]">
           {virtual ? (
             <div style={{ height: virtual.totalH, position: 'relative' }}>
-              <div style={{ transform: `translateY(${virtual.start * LIST_ROW_HEIGHT}px)` }}>
+              <div
+                className="divide-y divide-[var(--border)]"
+                style={{ transform: `translateY(${virtual.start * LIST_ROW_HEIGHT}px)` }}
+              >
                 {bookmarks
                   .slice(virtual.start, virtual.end)
                   .map((b, offset) => renderCard(b, virtual.start + offset))}
@@ -245,8 +248,6 @@ function BookmarkListInner({
     );
   }
 
-  // Honor the user's column count on wide viewports, while gracefully clamping on
-  // narrow viewports (e.g. Chrome Side Panel) so cards never squish below ~210px.
   const effectiveGridCols = Math.min(
     bookmarkColumns,
     Math.max(1, Math.floor(Math.max(viewportW - 40, 210) / 210))
@@ -263,7 +264,9 @@ function BookmarkListInner({
     <div ref={scrollRef} className="h-full w-full overflow-y-auto custom-scrollbar">
       <div
         className={
-          viewMode === 'grid' ? 'p-5 grid gap-3.5 max-w-7xl mx-auto' : 'p-5 grid gap-2.5 mx-auto'
+          viewMode === 'grid'
+            ? 'px-5 pt-2 pb-6 grid gap-3.5 max-w-7xl mx-auto'
+            : 'px-5 pt-2 pb-6 grid gap-2.5 mx-auto'
         }
         style={{
           contain: 'layout',

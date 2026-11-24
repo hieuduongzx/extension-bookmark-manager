@@ -1,14 +1,10 @@
+@import './styles/tokens.css';
+@import './styles/app.css';
+@import './styles/popup.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* ─────────────────────────────────────────────────────────────────────────
-   Lab Studio Design System — Light theme
-   Shared across bookmark-manager / taobao-currency / web-translator.
-   stream-translator keeps the same tokens but on a dark surface.
-   Each extension only swaps `theme.colors.brand` in tailwind.config to
-   re-skin every utility below.
-   ───────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   html,
@@ -16,20 +12,16 @@
     margin: 0;
     padding: 0;
   }
+
   body {
-    background-color: #ffffff;
-    color: #18181b;
-    font-family:
-      "Segoe UI", system-ui, -apple-system,
-      BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif,
-      "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-  }
-  html.dark body {
-    background-color: #18181b;
-    color: #fafafa;
   }
 }
 
@@ -45,181 +37,121 @@
 }
 
 @layer components {
-  /* Surface — neutral white card with subtle border + 1px shadow. */
+  /* Surface card — *2k standard */
   .surface-card {
-    @apply rounded-xl border border-zinc-200 bg-white shadow-card
-           dark:border-zinc-800 dark:bg-zinc-900;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
   }
 
-  /* Tiny uppercase label that titles a section / group of fields. */
+  /* Tiny uppercase label for form sections */
   .section-label {
-    @apply text-[11px] font-semibold uppercase tracking-wider text-zinc-500
-           dark:text-zinc-400;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
   }
 
-  /* Compact status pill (e.g. "LIVE", "OFF", "TRANSLATING"). */
-  .status-pill {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-           text-[10px] font-bold uppercase tracking-wider border;
-  }
-
-  /* Brand-tinted text input — default size. */
+  /* Inputs backed by *2k tokens */
   .brand-input {
-    @apply h-9 px-3 rounded-lg bg-zinc-50 border border-zinc-200
-           text-[13px] text-zinc-900 placeholder:text-zinc-400
-           focus:bg-white focus:border-brand-500
-           focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-           transition-colors
-           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100
-           dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900;
+    height: 34px;
+    padding: 0 11px;
+    border-radius: var(--radius);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
   }
 
-  /* Compact variant for dense toolbars (bookmark-manager dashboard). */
+  .brand-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .brand-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.22);
+  }
+
   .brand-input-sm {
-    @apply h-8 px-2.5 rounded-md bg-zinc-50 border border-zinc-200
-           text-[13px] text-zinc-900 placeholder:text-zinc-400
-           focus:bg-white focus:border-brand-500
-           focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-           transition-colors
-           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100
-           dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: var(--radius);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
   }
 
-  /* Solid brand button — default size. */
+  .brand-input-sm::placeholder {
+    color: var(--text-muted);
+  }
+
+  .brand-input-sm:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.22);
+  }
+
+  /* Primary & secondary buttons (*2k tokens, strictly nowrap) */
   .btn-brand {
-    @apply inline-flex items-center justify-center gap-1.5
-           h-9 px-3.5 rounded-lg text-[13px] font-semibold
-           bg-brand-600 text-white shadow-sm
-           hover:bg-brand-700 active:bg-brand-700
-           focus:outline-none focus:ring-2 focus:ring-brand-500/30
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors;
+    @apply ui-btn ui-btn--primary;
   }
 
-  /* Compact variant. */
   .btn-brand-sm {
-    @apply inline-flex items-center justify-center gap-1.5
-           h-8 px-3 rounded-md text-[13px] font-medium
-           bg-brand-600 text-white shadow-sm
-           hover:bg-brand-700 active:bg-brand-700
-           focus:outline-none focus:ring-2 focus:ring-brand-500/30
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors;
+    @apply ui-btn ui-btn--primary ui-btn--sm;
   }
 
-  /* Subtle ghost button. */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5
-           h-9 px-3.5 rounded-lg text-[13px] font-medium
-           bg-white border border-zinc-200 text-zinc-700
-           hover:bg-zinc-50 hover:border-zinc-300
-           focus:outline-none focus:ring-2 focus:ring-zinc-300/50
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors
-           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200
-           dark:hover:bg-zinc-700 dark:hover:border-zinc-600;
+    @apply ui-btn ui-btn--secondary;
   }
 
   .btn-ghost-sm {
-    @apply inline-flex items-center justify-center gap-1.5
-           h-8 px-3 rounded-md text-[13px] font-medium
-           bg-white border border-zinc-200 text-zinc-700
-           hover:bg-zinc-50 hover:border-zinc-300
-           focus:outline-none focus:ring-2 focus:ring-zinc-300/50
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors
-           dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200
-           dark:hover:bg-zinc-700 dark:hover:border-zinc-600;
+    @apply ui-btn ui-btn--secondary ui-btn--sm;
   }
 
-  /* Square icon-only button (matches input height). */
   .btn-icon {
-    @apply inline-flex items-center justify-center shrink-0
-           h-9 w-9 rounded-lg text-zinc-500
-           hover:text-zinc-900 hover:bg-zinc-100
-           focus:outline-none focus:ring-2 focus:ring-zinc-300/50
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors
-           dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800;
+    @apply ui-btn ui-btn--ghost ui-btn--icon;
   }
 
-  /* Compact variant for dense toolbars / sidebar / modal close. */
   .btn-icon-sm {
-    @apply inline-flex items-center justify-center shrink-0
-           h-7 w-7 rounded-md text-zinc-500
-           hover:text-zinc-900 hover:bg-zinc-100
-           focus:outline-none focus:ring-2 focus:ring-zinc-300/50
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors
-           dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800;
-  }
-
-  /* ── Lab Studio signature elements (the "maker's mark" across tools) ── */
-
-  /* Logo block — gradient from brand-500 → brand-600 with halo. */
-  .brand-logo {
-    @apply relative flex items-center justify-center shrink-0
-           h-10 w-10 rounded-xl text-white
-           bg-gradient-to-br from-brand-500 to-brand-600
-           shadow-glow;
-  }
-
-  /* Hairline gradient divider that lives under headers. */
-  .accent-line {
-    @apply h-px w-full;
-    background-image: linear-gradient(
-      to right,
-      transparent 0%,
-      rgb(var(--brand-rgb, 24 24 27) / 0.35) 50%,
-      transparent 100%
-    );
+    @apply ui-btn ui-btn--ghost ui-btn--sm ui-btn--icon;
   }
 }
 
-/* Shared scrollbar. */
+/* Scoped scrollbar helper (matches native *2k scrollbar) */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #e4e4e7;
-  border-radius: 4px;
+  background: var(--border);
+  border-radius: 99px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #d4d4d8;
-}
-html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-}
-html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--text-muted);
 }
 
-/* Bookmark-manager brand RGB for the accent gradient line (blue-500). */
-:root {
-  --brand-rgb: 59 130 246;
-}
-
-/* Avoid the yellow autofill chrome. */
+/* Avoid yellow autofill chrome */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
-  -webkit-text-fill-color: #18181b;
+  -webkit-box-shadow: 0 0 0 1000px var(--surface) inset;
+  -webkit-text-fill-color: var(--text);
   transition: background-color 5000s ease-in-out 0s;
-}
-html.dark input:-webkit-autofill,
-html.dark input:-webkit-autofill:hover,
-html.dark input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px #18181b inset;
-  -webkit-text-fill-color: #fafafa;
 }
 
 /* Focus rings for a11y */
 :focus-visible {
-  outline: 2px solid rgb(59 130 246 / 0.7);
+  outline: 2px solid rgba(59, 130, 246, 0.72);
   outline-offset: 2px;
 }

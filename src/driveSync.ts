@@ -80,6 +80,7 @@ export interface GDriveStatus {
 export interface GDriveUiStatus {
   connected: boolean;
   needsReauth?: boolean;
+  status?: DriveSyncStatus;
   email: string | null;
   lastSyncAt: number | null;
   busy?: boolean;

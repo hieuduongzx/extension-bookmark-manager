@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   Cloud,
   CloudOff,
   Database,
@@ -12,7 +13,6 @@ import {
   SlidersHorizontal,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react';
 import type {
   AppSettings,
@@ -25,7 +25,6 @@ import type {
 } from '../types';
 import { COLLECTION } from '../types';
 import { createT } from '../i18n';
-import { useEscapeKey, useFocusTrap } from '../hooks';
 import { Dropdown } from './Dropdown';
 import type { DriveBackup, GDriveStatus } from '../driveSync';
 import {
@@ -34,6 +33,9 @@ import {
   formatRelativeTime,
 } from '../shared/driveSync/strings';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Button } from './ui/Button';
+import { Dialog } from './ui/Dialog';
+import { Switch } from './ui/Switch';
 
 export interface LibraryStats {
   totalBookmarks: number;
@@ -91,16 +93,9 @@ export function SettingsModal({
   const [gdriveBusy, setGdriveBusy] = useState<
     'connect' | 'sync' | 'disconnect' | 'delete' | 'backup' | null
   >(null);
-  /** Transport-level error (messaging failed); Drive errors come from gdrive.lastError */
   const [gdriveError, setGdriveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [, setClock] = useState(0);
-  const containerRef = useFocusTrap<HTMLDivElement>(true);
-  useEscapeKey(onClose);
-
-  useEffect(() => {
-    containerRef.current?.focus();
-  }, [containerRef]);
 
   const collectionOptions = useMemo(
     () => [
@@ -127,7 +122,6 @@ export function SettingsModal({
 
   useEffect(() => {
     refreshGDrive();
-    // Live status while a background sync runs, and a ticking "x minutes ago".
     const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
       if (area === 'local' && changes.bm_drive_state) refreshGDrive();
     };
@@ -189,7 +183,6 @@ export function SettingsModal({
   };
 
   const handleConnect = async () => {
-    // The OAuth window closes the popup, so sign in from the full Dashboard tab.
     const isPopup = !window.location.search.includes('target=dashboard');
     if (isPopup) {
       const url = chrome.runtime.getURL('index.html?target=dashboard&gdrive=connect');
@@ -241,34 +234,40 @@ export function SettingsModal({
           extensionId: gdrive.extensionId,
         })
       : null;
+
   const statusChip = (() => {
     if (!gdrive?.connected) return null;
     if (gdrive.syncing || gdriveBusy === 'sync' || gdriveBusy === 'connect') {
       return {
         label: t('gdriveSyncing'),
-        cls: 'bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300',
+        color: 'var(--accent)',
+        bg: 'rgba(59, 130, 246, 0.14)',
       };
     }
     switch (gdrive.status) {
       case 'needs_reauth':
         return {
           label: t('gdriveStatusNeedsReauth'),
-          cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+          color: 'var(--warning)',
+          bg: 'rgba(245, 158, 11, 0.14)',
         };
       case 'error':
         return {
           label: t('gdriveStatusError'),
-          cls: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+          color: 'var(--danger)',
+          bg: 'rgba(239, 68, 68, 0.14)',
         };
       case 'synced':
         return {
           label: t('gdriveStatusSynced'),
-          cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+          color: 'var(--success)',
+          bg: 'rgba(34, 197, 94, 0.14)',
         };
       default:
         return {
           label: t('gdriveStatusIdle'),
-          cls: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+          color: 'var(--text-muted)',
+          bg: 'var(--surface-2)',
         };
     }
   })();
@@ -283,63 +282,53 @@ export function SettingsModal({
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-zinc-900/45 dark:bg-black/65 backdrop-blur-[2px]"
-      onClick={onClose}
-    >
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-pop animate-scale-in focus:outline-none"
+    <>
+      <Dialog
+        open={true}
+        title={t('settings')}
+        onClose={onClose}
+        closeLabel={t('close')}
+        maxWidth={540}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              {t('cancel')}
+            </Button>
+            <Button variant="primary" size="sm" disabled={saving} onClick={handleSave}>
+              {t('save')}
+            </Button>
+          </>
+        }
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200/80 dark:border-zinc-800 shrink-0">
-          <h2 id="settings-title" className="text-[15px] font-bold text-zinc-900 dark:text-zinc-50">
-            {t('settings')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-icon-sm dark:hover:bg-zinc-800"
-            aria-label={t('close')}
+        <div className="space-y-4">
+          {/* Segmented Tab Bar (*2k standard) */}
+          <div
+            role="tablist"
+            aria-label={t('settings')}
+            className="ui-segmented w-full grid grid-cols-4"
           >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+            {tabs.map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === id}
+                onClick={() => setActiveTab(id)}
+                className={`ui-segmented-btn !h-[30px] ${activeTab === id ? 'is-active' : ''}`}
+              >
+                <Icon size={13} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
 
-        {/* Tab bar */}
-        <div role="tablist" aria-label={t('settings')} className="flex gap-1 px-4 pt-3 shrink-0">
-          {tabs.map(({ id, icon: Icon, label }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === id}
-              onClick={() => setActiveTab(id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[12px] font-semibold transition-colors ${
-                activeTab === id
-                  ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300'
-                  : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-4">
           {activeTab === 'general' && (
             <section className="space-y-3" aria-label={t('tabGeneral')}>
               <div className="grid grid-cols-2 gap-3">
-                <label className="block space-y-1">
-                  <span className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300">
-                    {t('theme')}
-                  </span>
+                <label className="block">
+                  <span className="ui-label">{t('theme')}</span>
                   <Dropdown<ThemeMode>
+                    size="sm"
                     value={draft.theme}
                     onChange={(theme) => setDraft((d) => ({ ...d, theme }))}
                     options={[
@@ -352,11 +341,10 @@ export function SettingsModal({
                   />
                 </label>
 
-                <label className="block space-y-1">
-                  <span className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300">
-                    {t('language')}
-                  </span>
+                <label className="block">
+                  <span className="ui-label">{t('language')}</span>
                   <Dropdown<LocaleCode>
+                    size="sm"
                     value={draft.locale}
                     onChange={(locale) => setDraft((d) => ({ ...d, locale }))}
                     options={[
@@ -370,11 +358,10 @@ export function SettingsModal({
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <label className="block space-y-1">
-                  <span className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300">
-                    {t('defaultViewMode')}
-                  </span>
+                <label className="block">
+                  <span className="ui-label">{t('defaultViewMode')}</span>
                   <Dropdown<ViewMode>
+                    size="sm"
                     value={draft.defaultViewMode}
                     onChange={(defaultViewMode) => setDraft((d) => ({ ...d, defaultViewMode }))}
                     options={[
@@ -388,11 +375,10 @@ export function SettingsModal({
                   />
                 </label>
 
-                <label className="block space-y-1">
-                  <span className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300">
-                    {t('defaultSort')}
-                  </span>
+                <label className="block">
+                  <span className="ui-label">{t('defaultSort')}</span>
                   <Dropdown<SortOrder>
+                    size="sm"
                     value={draft.defaultSort}
                     onChange={(defaultSort) => setDraft((d) => ({ ...d, defaultSort }))}
                     options={[
@@ -409,11 +395,10 @@ export function SettingsModal({
                 </label>
               </div>
 
-              <label className="block space-y-1">
-                <span className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300">
-                  {t('defaultCollection')}
-                </span>
+              <label className="block">
+                <span className="ui-label">{t('defaultCollection')}</span>
                 <Dropdown
+                  size="sm"
                   value={draft.defaultCollectionId}
                   onChange={(defaultCollectionId) =>
                     setDraft((d) => ({ ...d, defaultCollectionId }))
@@ -424,10 +409,8 @@ export function SettingsModal({
                 />
               </label>
 
-              <label className="block space-y-1">
-                <span className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300">
-                  {t('trashAutoEmpty')}
-                </span>
+              <label className="block">
+                <span className="ui-label">{t('trashAutoEmpty')}</span>
                 <input
                   type="number"
                   min={0}
@@ -440,23 +423,25 @@ export function SettingsModal({
                     if (Number.isFinite(n)) setDraft((d) => ({ ...d, trashAutoEmptyDays: n }));
                   }}
                   onBlur={() => setTrashDaysInput(String(draft.trashAutoEmptyDays))}
-                  className="brand-input w-full dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+                  className="ui-input w-full"
                 />
-                <span className="text-[11px] text-zinc-400">{t('trashAutoEmptyHint')}</span>
+                <span className="text-[11px] text-[var(--text-muted)] block mt-1">
+                  {t('trashAutoEmptyHint')}
+                </span>
               </label>
 
-              <div className="pt-2 space-y-0.5 border-t border-zinc-100 dark:border-zinc-800">
-                <Toggle
+              <div className="pt-2 divide-y divide-[var(--border)] border-t border-[var(--border)]">
+                <SettingSwitchRow
                   checked={draft.fetchPreviews}
                   onChange={(fetchPreviews) => setDraft((d) => ({ ...d, fetchPreviews }))}
                   label={t('fetchPreviewsToggle')}
                 />
-                <Toggle
+                <SettingSwitchRow
                   checked={draft.showQuickSave}
                   onChange={(showQuickSave) => setDraft((d) => ({ ...d, showQuickSave }))}
                   label={t('quickSaveToggle')}
                 />
-                <Toggle
+                <SettingSwitchRow
                   checked={draft.openInSidePanel}
                   onChange={(openInSidePanel) => setDraft((d) => ({ ...d, openInSidePanel }))}
                   label={t('sidePanelToggle')}
@@ -468,17 +453,18 @@ export function SettingsModal({
           {activeTab === 'sync' && (
             <section className="space-y-3" aria-label={t('tabSync')}>
               {gdrive && !gdrive.configured && (
-                <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                  {t('gdriveNotConfigured')}
-                </p>
+                <div className="ui-notice ui-notice--warn">
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5 text-[var(--warning)]" />
+                  <span>{t('gdriveNotConfigured')}</span>
+                </div>
               )}
 
               <div
                 id="gdrive-section"
-                className={`rounded-xl border bg-zinc-50 dark:bg-zinc-800/50 px-3.5 py-3 space-y-2.5 ${
+                className={`rounded-[var(--radius-lg)] border bg-[var(--bg)] p-3.5 space-y-3 ${
                   autoConnectGDrive
-                    ? 'border-brand-400 dark:border-brand-500 ring-2 ring-brand-500/20'
-                    : 'border-zinc-200 dark:border-zinc-700'
+                    ? 'border-[var(--accent)] ring-2 ring-[rgba(59,130,246,0.18)]'
+                    : 'border-[var(--border)]'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
@@ -487,21 +473,21 @@ export function SettingsModal({
                       src={gdrive.account.photoUrl}
                       alt=""
                       referrerPolicy="no-referrer"
-                      className="w-8 h-8 rounded-full shrink-0 bg-zinc-200 dark:bg-zinc-700"
+                      className="w-8 h-8 rounded-full shrink-0 bg-[var(--surface-2)]"
                     />
                   ) : gdrive?.connected ? (
-                    <Cloud className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
+                    <Cloud className="w-4 h-4 text-[var(--accent)] shrink-0" />
                   ) : (
-                    <CloudOff className="w-4 h-4 text-zinc-400 shrink-0" />
+                    <CloudOff className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] font-semibold text-zinc-800 dark:text-zinc-100 truncate">
+                    <p className="text-[13px] font-semibold text-[var(--text)] truncate m-0">
                       {gdrive?.connected
                         ? gdrive.account?.email || gdrive.account?.displayName || 'Google'
                         : t('gdriveNotConnected')}
                     </p>
                     {gdrive?.connected && (
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                      <p className="text-[11.5px] text-[var(--text-muted)] truncate m-0 mt-0.5">
                         {t('gdriveLastSync')}:{' '}
                         {gdrive.lastSyncAt ? (
                           <time
@@ -519,7 +505,8 @@ export function SettingsModal({
                   </div>
                   {statusChip && (
                     <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${statusChip.cls}`}
+                      className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap"
+                      style={{ color: statusChip.color, backgroundColor: statusChip.bg }}
                       role="status"
                     >
                       {statusChip.label}
@@ -529,89 +516,102 @@ export function SettingsModal({
 
                 {(driveErr || gdriveError) && (
                   <div
-                    className={`rounded-lg px-2.5 py-2 text-[11px] break-words whitespace-pre-wrap ${
-                      gdrive?.status === 'needs_reauth'
-                        ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200'
-                        : 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300'
+                    className={`ui-notice ${
+                      gdrive?.status === 'needs_reauth' ? 'ui-notice--warn' : 'ui-notice--danger'
                     }`}
                     role="alert"
                   >
-                    {driveErr ? (
-                      <>
-                        <p className="font-semibold">{driveErr.title}</p>
-                        {driveErr.hint && <p className="mt-0.5 opacity-90">{driveErr.hint}</p>}
-                      </>
-                    ) : (
-                      gdriveError
-                    )}
+                    <AlertTriangle
+                      size={15}
+                      className="shrink-0 mt-0.5"
+                      style={{
+                        color:
+                          gdrive?.status === 'needs_reauth' ? 'var(--warning)' : 'var(--danger)',
+                      }}
+                    />
+                    <div className="min-w-0 flex-1 break-words whitespace-pre-wrap">
+                      {driveErr ? (
+                        <>
+                          <p className="font-semibold m-0">{driveErr.title}</p>
+                          {driveErr.hint && (
+                            <p className="mt-0.5 mb-0 text-[var(--text-muted)]">{driveErr.hint}</p>
+                          )}
+                        </>
+                      ) : (
+                        gdriveError
+                      )}
+                    </div>
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {!gdrive?.connected || gdrive.needsReauth ? (
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
+                      size="sm"
                       disabled={busy || gdrive?.configured === false}
                       onClick={handleConnect}
-                      className="btn-brand-sm inline-flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {gdriveBusy === 'connect' ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 size={14} className="ui-spin" />
                       ) : (
-                        <Cloud className="w-3.5 h-3.5" />
+                        <Cloud size={14} />
                       )}
-                      {gdriveBusy === 'connect'
-                        ? t('gdriveConnecting')
-                        : gdrive?.needsReauth
-                          ? t('gdriveReconnect')
-                          : t('gdriveConnect')}
-                    </button>
+                      <span>
+                        {gdriveBusy === 'connect'
+                          ? t('gdriveConnecting')
+                          : gdrive?.needsReauth
+                            ? t('gdriveReconnect')
+                            : t('gdriveConnect')}
+                      </span>
+                    </Button>
                   ) : (
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
+                      size="sm"
                       disabled={busy || gdrive.syncing}
                       onClick={handleSync}
-                      className="btn-brand-sm inline-flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {gdriveBusy === 'sync' || gdrive.syncing ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 size={14} className="ui-spin" />
                       ) : (
-                        <RefreshCw className="w-3.5 h-3.5" />
+                        <RefreshCw size={14} />
                       )}
-                      {gdriveBusy === 'sync' || gdrive.syncing ? t('gdriveSyncing') : t('gdriveSyncNow')}
-                    </button>
+                      <span>
+                        {gdriveBusy === 'sync' || gdrive.syncing
+                          ? t('gdriveSyncing')
+                          : t('gdriveSyncNow')}
+                      </span>
+                    </Button>
                   )}
                   {gdrive?.connected && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={handleDisconnect}
-                      className="btn-ghost-sm inline-flex items-center gap-1.5 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 disabled:opacity-50"
-                    >
-                      {gdriveBusy === 'disconnect' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                      {t('gdriveDisconnect')}
-                    </button>
+                    <Button variant="secondary" size="sm" disabled={busy} onClick={handleDisconnect}>
+                      {gdriveBusy === 'disconnect' ? <Loader2 size={14} className="ui-spin" /> : null}
+                      <span>{t('gdriveDisconnect')}</span>
+                    </Button>
                   )}
                 </div>
               </div>
 
-              <Toggle
+              <SettingSwitchRow
                 checked={draft.gdriveAutoSync !== false}
                 onChange={(gdriveAutoSync) => setDraft((d) => ({ ...d, gdriveAutoSync }))}
                 label={t('gdriveAutoSync')}
               />
-              <p className="text-[11px] text-zinc-400">{t('gdriveDesc')}</p>
+              <p className="text-[11.5px] text-[var(--text-muted)] m-0">{t('gdriveDesc')}</p>
 
               {gdrive && (
                 <details
-                  className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3.5 py-2.5 text-[11px] text-zinc-500 dark:text-zinc-400"
-                  open={Boolean(driveErr && gdrive.lastError?.code !== 'needs_reauth') || undefined}
+                  className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-[11.5px] text-[var(--text-muted)]"
+                  open={
+                    Boolean(driveErr && gdrive.lastError?.code !== 'needs_reauth') || undefined
+                  }
                 >
-                  <summary className="cursor-pointer select-none font-semibold text-zinc-600 dark:text-zinc-300 hover:text-zinc-800 dark:hover:text-zinc-100">
+                  <summary className="cursor-pointer select-none font-semibold text-[var(--text)]">
                     {t('gdriveAdvanced')}
                   </summary>
-                  <div className="mt-2.5 space-y-3">
-                    <div className="space-y-1.5">
+                  <div className="mt-3 space-y-3">
+                    <div className="space-y-2">
                       <CopyRow
                         label={t('extensionId')}
                         value={gdrive.extensionId}
@@ -626,65 +626,53 @@ export function SettingsModal({
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="font-semibold text-zinc-700 dark:text-zinc-200">
+                    <div className="space-y-1.5 pt-2 border-t border-[var(--border)]">
+                      <p className="font-semibold text-[var(--text)] m-0">
                         {t('gdriveBackupTitle')}
                       </p>
-                      <p>{t('gdriveBackupDesc')}</p>
-                      <button
-                        type="button"
+                      <p className="m-0">{t('gdriveBackupDesc')}</p>
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         disabled={busy || !gdrive.backupAt}
                         onClick={handleDownloadBackup}
-                        className="btn-ghost-sm inline-flex items-center gap-1.5 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 disabled:opacity-50"
                       >
                         {gdriveBusy === 'backup' ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <Loader2 size={13} className="ui-spin" />
                         ) : (
-                          <Download className="w-3.5 h-3.5" />
+                          <Download size={13} />
                         )}
-                        {gdrive.backupAt
-                          ? `${t('gdriveBackupDownload')} · ${formatAbsoluteTime(gdrive.backupAt, driveLocale)}`
-                          : t('gdriveBackupNone')}
-                      </button>
+                        <span>
+                          {gdrive.backupAt
+                            ? `${t('gdriveBackupDownload')} · ${formatAbsoluteTime(gdrive.backupAt, driveLocale)}`
+                            : t('gdriveBackupNone')}
+                        </span>
+                      </Button>
                     </div>
 
                     {gdrive.connected && (
-                      <div className="space-y-1">
-                        <p className="font-semibold text-rose-700 dark:text-rose-300">
+                      <div className="space-y-1.5 pt-2 border-t border-[var(--border)]">
+                        <p className="font-semibold text-[var(--danger)] m-0">
                           {t('gdriveDeleteRemote')}
                         </p>
-                        <p>{t('gdriveDeleteRemoteDesc')}</p>
-                        <button
-                          type="button"
+                        <p className="m-0">{t('gdriveDeleteRemoteDesc')}</p>
+                        <Button
+                          variant="danger-subtle"
+                          size="sm"
                           disabled={busy}
                           onClick={() => setConfirmDelete(true)}
-                          className="btn-ghost-sm inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400 dark:bg-zinc-800 dark:border-zinc-700 disabled:opacity-50"
                         >
                           {gdriveBusy === 'delete' ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <Loader2 size={13} className="ui-spin" />
                           ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 size={13} />
                           )}
-                          {t('gdriveDeleteRemote')}
-                        </button>
+                          <span>{t('gdriveDeleteRemote')}</span>
+                        </Button>
                       </div>
                     )}
                   </div>
                 </details>
-              )}
-
-              {confirmDelete && (
-                <ConfirmDialog
-                  locale={draft.locale}
-                  onClose={() => setConfirmDelete(false)}
-                  dialog={{
-                    title: t('gdriveDeleteRemote'),
-                    message: t('gdriveDeleteRemoteConfirm'),
-                    confirmLabel: t('gdriveDeleteRemote'),
-                    variant: 'danger',
-                    onConfirm: handleDeleteRemote,
-                  }}
-                />
               )}
             </section>
           )}
@@ -693,7 +681,7 @@ export function SettingsModal({
             <section className="space-y-4" aria-label={t('tabData')}>
               {stats && (
                 <div className="space-y-1.5">
-                  <p className="section-label">{t('libraryStats')}</p>
+                  <p className="section-label m-0">{t('libraryStats')}</p>
                   <div className="grid grid-cols-5 gap-1.5">
                     <StatTile label={t('statBookmarks')} value={stats.totalBookmarks} />
                     <StatTile label={t('statCollections')} value={stats.totalCollections} />
@@ -709,7 +697,7 @@ export function SettingsModal({
               )}
 
               <div className="space-y-1.5">
-                <p className="section-label">{t('importExport')}</p>
+                <p className="section-label m-0">{t('importExport')}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {onImportJson && (
                     <ActionButton onClick={onImportJson} icon={Upload} label={t('importJson')} />
@@ -744,8 +732,8 @@ export function SettingsModal({
               </div>
 
               {(onRefreshPreviews || onCheckBroken || onEmptyOldTrash) && (
-                <div className="space-y-1.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-                  <p className="section-label">{t('maintenance')}</p>
+                <div className="space-y-1.5 pt-3 border-t border-[var(--border)]">
+                  <p className="section-label m-0">{t('maintenance')}</p>
                   <div className="grid grid-cols-1 gap-1.5">
                     {onRefreshPreviews && (
                       <ActionButton
@@ -776,7 +764,7 @@ export function SettingsModal({
 
           {activeTab === 'shortcuts' && (
             <section aria-label={t('tabShortcuts')}>
-              <ul className="text-[12.5px] text-zinc-600 dark:text-zinc-300 divide-y divide-zinc-100 dark:divide-zinc-800">
+              <ul className="text-[12.5px] text-[var(--text)] divide-y divide-[var(--border)] m-0 p-0 list-none">
                 <ShortcutRow label={t('shortcutCommandPalette')} keys="Ctrl/⌘ + K" />
                 <ShortcutRow label={t('shortcutSearch')} keys="/" />
                 <ShortcutRow label={t('shortcutNewBookmark')} keys="N" />
@@ -791,35 +779,36 @@ export function SettingsModal({
             </section>
           )}
         </div>
+      </Dialog>
 
-        <div className="px-5 py-3.5 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-end gap-2 shrink-0 bg-zinc-50/60 dark:bg-zinc-800/40 rounded-b-2xl">
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-ghost-sm dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200"
-          >
-            {t('cancel')}
-          </button>
-          <button type="button" disabled={saving} onClick={handleSave} className="btn-brand-sm">
-            {t('save')}
-          </button>
-        </div>
-      </div>
-    </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          locale={draft.locale}
+          onClose={() => setConfirmDelete(false)}
+          dialog={{
+            title: t('gdriveDeleteRemote'),
+            message: t('gdriveDeleteRemoteConfirm'),
+            confirmLabel: t('gdriveDeleteRemote'),
+            variant: 'danger',
+            onConfirm: handleDeleteRemote,
+          }}
+        />
+      )}
+    </>
   );
 }
 
 function StatTile({ label, value, alert = false }: { label: string; value: number; alert?: boolean }) {
   return (
-    <div className="rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-800/50 px-2 py-2 text-center">
+    <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-2 py-2 text-center">
       <p
-        className={`text-[15px] font-bold tabular-nums leading-tight ${
-          alert ? 'text-red-600 dark:text-red-400' : 'text-zinc-900 dark:text-zinc-50'
+        className={`text-[15px] font-bold tabular-nums leading-tight m-0 ${
+          alert ? 'text-[var(--danger)]' : 'text-[var(--text)]'
         }`}
       >
         {value}
       </p>
-      <p className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+      <p className="text-[10.5px] font-medium text-[var(--text-muted)] truncate mt-0.5 mb-0">
         {label}
       </p>
     </div>
@@ -830,7 +819,7 @@ function ShortcutRow({ label, keys }: { label: string; keys: string }) {
   return (
     <li className="flex items-center justify-between gap-3 py-2">
       <span>{label}</span>
-      <kbd className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 font-mono text-[11px] text-zinc-700 dark:text-zinc-200 shrink-0">
+      <kbd className="px-2 py-0.5 rounded-[6px] bg-[var(--surface-2)] border border-[var(--border)] font-mono text-[11px] text-[var(--text)] shrink-0">
         {keys}
       </kbd>
     </li>
@@ -847,18 +836,14 @@ function ActionButton({
   label: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="btn-ghost-sm w-full justify-start dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200"
-    >
-      <Icon className="w-3.5 h-3.5 shrink-0 text-zinc-400" />
+    <Button variant="secondary" size="sm" onClick={onClick} className="w-full !justify-start">
+      <Icon size={14} className="shrink-0 text-[var(--text-muted)]" />
       <span className="truncate">{label}</span>
-    </button>
+    </Button>
   );
 }
 
-function Toggle({
+function SettingSwitchRow({
   checked,
   onChange,
   label,
@@ -868,26 +853,10 @@ function Toggle({
   label: string;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className="w-full flex items-center justify-between gap-3 py-1.5 text-left"
-    >
-      <span className="text-[12.5px] font-medium text-zinc-700 dark:text-zinc-200">{label}</span>
-      <span
-        className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
-          checked ? 'bg-brand-600' : 'bg-zinc-300 dark:bg-zinc-600'
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-            checked ? 'translate-x-4' : ''
-          }`}
-        />
-      </span>
-    </button>
+    <div className="flex items-center justify-between gap-3 py-2">
+      <span className="text-[13px] font-medium text-[var(--text)]">{label}</span>
+      <Switch checked={checked} onChange={onChange} ariaLabel={label} />
+    </div>
   );
 }
 
@@ -906,10 +875,10 @@ function CopyRow({
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] text-zinc-500">{label}</span>
+        <span className="text-[11px] text-[var(--text-muted)]">{label}</span>
         <button
           type="button"
-          className="text-[10px] font-medium text-brand-600 dark:text-brand-400 hover:underline shrink-0"
+          className="text-[11px] font-medium text-[var(--accent)] hover:underline shrink-0"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(value);
@@ -923,9 +892,7 @@ function CopyRow({
           {copied ? copiedLabel : copyLabel}
         </button>
       </div>
-      <p className="text-[10px] text-zinc-700 dark:text-zinc-300 font-mono break-all select-all">
-        {value}
-      </p>
+      <p className="text-[11px] text-[var(--text)] font-mono break-all select-all m-0">{value}</p>
     </div>
   );
 }

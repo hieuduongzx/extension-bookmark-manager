@@ -32,3 +32,6 @@ Thumbs.db
 
 # Chrome Web Store build (npm run build:store)
 dist-store/
+
+# Local UI verification screenshots
+screenshots/

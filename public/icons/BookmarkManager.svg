@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c2c31"/>
+      <stop offset="1" stop-color="#121214"/>
+    </linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="wh" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4e4e7"/>
+    </linearGradient>
+  </defs>
+  <!-- Dark *2k squircle frame -->
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#bg)"/>
+  <rect x="36" y="36" width="952" height="952" rx="220" fill="none" stroke="#ffffff" stroke-opacity=".10" stroke-width="8"/>
+  <!-- Cyan-blue accent collection tab -->
+  <path d="M276 264 Q276 200 340 200 H494 Q534 200 558 232 L584 268 H684 Q748 268 748 332 V420 H276 Z" fill="url(#acc)"/>
+  <!-- White bookmark ribbon foreground -->
+  <path d="M244 392 Q244 324 312 324 H712 Q780 324 780 392 V784 Q780 822 746 802 L532 674 Q512 662 492 674 L278 802 Q244 822 244 784 Z" fill="url(#wh)"/>
+  <!-- Dark center star cutout (same weight & corner rounding as TubeDeck2k play mark) -->
+  <path d="M512 414 L541 474 L608 484 L560 530 L571 596 L512 565 L453 596 L464 530 L416 484 L483 474 Z" fill="#18181b" stroke="#18181b" stroke-width="24" stroke-linejoin="round"/>
+</svg>

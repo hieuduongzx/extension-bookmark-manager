@@ -37,6 +37,7 @@ import { createT } from '../i18n';
 import { useEscapeKey } from '../hooks';
 import type { GDriveUiStatus } from '../driveSync';
 import { getCollectionColorText, getCollectionIcon } from '../collectionIcons';
+import { DriveStatusDot } from './ui/DriveStatus';
 
 interface SidebarProps {
   collections: Collection[];
@@ -70,9 +71,9 @@ interface SidebarProps {
 
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'bm-sidebar-collapse-state';
 const SIDEBAR_WIDTH_STORAGE_KEY = 'bm-sidebar-width';
-const SIDEBAR_MIN_WIDTH = 188;
-const SIDEBAR_MAX_WIDTH = 400;
-const SIDEBAR_DEFAULT_WIDTH = 220;
+const SIDEBAR_MIN_WIDTH = 196;
+const SIDEBAR_MAX_WIDTH = 380;
+const SIDEBAR_DEFAULT_WIDTH = 228;
 
 const getStoredCollapseState = () => {
   try {
@@ -106,7 +107,7 @@ const getStoredSidebarWidth = (): number => {
   }
 };
 
-// ─── Extracted NavItem ──────────────────────────────────────────────────────
+// ─── Extracted NavItem (*2k style) ───────────────────────────────────────────
 
 interface NavItemProps {
   id: string;
@@ -193,40 +194,41 @@ const NavItem = memo(
             }
           }
         }}
-        className="group relative h-8"
+        className="group relative h-[34px]"
       >
         <button
           type="button"
           onClick={() => onSelect(id)}
           aria-current={isActive ? 'page' : undefined}
-          style={{ paddingLeft: `${isCustom ? 28 + depth * 16 : 10}px` }}
-          className={`w-full h-full flex items-center justify-between rounded-lg pr-2 transition-colors duration-150 ease-out text-[13px] ${
+          style={{ paddingLeft: `${isCustom ? 26 + depth * 15 : 10}px` }}
+          className={`w-full h-full flex items-center justify-between rounded-[var(--radius)] pr-2 transition-colors duration-150 text-[13px] ${
             isActive
-              ? 'bg-brand-50 text-brand-800 font-semibold dark:bg-brand-950/55 dark:text-brand-100'
-              : 'text-zinc-600 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/80 dark:hover:text-zinc-50'
-          } ${isDragOver ? 'ring-2 ring-brand-400 ring-inset bg-brand-50 dark:bg-brand-950/40' : ''}`}
+              ? 'bg-[rgba(59,130,246,0.14)] text-[var(--accent)] font-semibold'
+              : 'text-[var(--text-muted)] font-medium hover:bg-[var(--surface-2)] hover:text-[var(--text)]'
+          } ${isDragOver ? 'ring-2 ring-[var(--accent)] ring-inset bg-[rgba(59,130,246,0.12)]' : ''}`}
         >
           <div className="flex items-center gap-2 min-w-0">
             <Icon
-              className={`w-4 h-4 shrink-0 transition-colors duration-150 ${getCollectionColorText(
-                color,
-                isActive
-              )} ${!isCustom ? 'ml-0.5' : ''}`}
+              className={`w-4 h-4 shrink-0 transition-colors ${
+                isActive ? 'text-[var(--accent)]' : getCollectionColorText(color, false)
+              } ${!isCustom ? 'ml-0.5' : ''}`}
             />
             <span className="truncate">{label}</span>
           </div>
 
           <div
-            className={`flex items-center gap-1 transition-all duration-150 ${
+            className={`flex items-center gap-1 transition-opacity duration-150 ${
               isCustom ? 'group-hover:opacity-0' : ''
             }`}
           >
-            {isCustom && isPinned && <Pin className="w-3 h-3 fill-current text-brand-500" />}
+            {isCustom && isPinned && (
+              <Pin className="w-3 h-3 fill-current text-[var(--accent)]" />
+            )}
             <span
-              className={`text-[11px] font-semibold px-1.5 rounded-full transition-colors duration-150 min-w-[20px] h-[18px] inline-flex items-center justify-center tabular-nums ${
+              className={`text-[11px] font-semibold px-1.5 rounded-full min-w-[20px] h-[18px] inline-flex items-center justify-center tabular-nums ${
                 isActive
-                  ? 'text-brand-700 bg-brand-100/80 dark:text-brand-200 dark:bg-brand-900/50'
-                  : 'text-zinc-500 bg-zinc-200/60 group-hover:bg-zinc-200 dark:text-zinc-400 dark:bg-zinc-800 dark:group-hover:bg-zinc-700'
+                  ? 'bg-[rgba(59,130,246,0.16)] text-[var(--accent)]'
+                  : 'bg-[var(--surface-2)] text-[var(--text-muted)]'
               }`}
             >
               {count}
@@ -240,8 +242,8 @@ const NavItem = memo(
             onClick={() => onToggleExpand?.()}
             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${label}`}
             aria-expanded={isExpanded}
-            style={{ left: `${8 + depth * 16}px` }}
-            className="absolute top-1.5 flex h-5 w-5 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200/80 hover:text-zinc-700 dark:hover:bg-zinc-700/80 dark:hover:text-zinc-200"
+            style={{ left: `${6 + depth * 15}px` }}
+            className="absolute top-1.5 flex h-5 w-5 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
           >
             <ChevronRight
               className={`w-3.5 h-3.5 transition-transform duration-150 ${
@@ -258,8 +260,8 @@ const NavItem = memo(
               onClick={() => onTogglePinCollection?.(id)}
               className={`p-1 rounded transition-colors ${
                 isPinned
-                  ? 'text-brand-600 hover:text-brand-700 hover:bg-brand-50 dark:text-brand-400 dark:hover:text-brand-300 dark:hover:bg-brand-950/50'
-                  : 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200 dark:hover:text-zinc-100 dark:hover:bg-zinc-700'
+                  ? 'text-[var(--accent)] hover:bg-[rgba(59,130,246,0.12)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'
               }`}
               title={isPinned ? unpinTitle : pinTitle}
             >
@@ -268,7 +270,7 @@ const NavItem = memo(
             <button
               type="button"
               onClick={() => onEditCollection?.(id)}
-              className="p-1 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-200 dark:hover:text-zinc-100 dark:hover:bg-zinc-700 rounded transition-colors"
+              className="p-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] rounded transition-colors"
               title={editTitle}
             >
               <Edit2 className="w-3.5 h-3.5" />
@@ -341,7 +343,7 @@ const TagsSection = memo(
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="flex items-center gap-1.5 py-1 w-full text-left text-[12px] font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
+            className="flex items-center gap-1.5 py-1 w-full text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
             aria-expanded={!isCollapsed}
           >
             <ChevronRight
@@ -351,7 +353,7 @@ const TagsSection = memo(
             />
             <span>{t('tags')}</span>
             {(activeTags.length > 0 || availableTags.length > 0) && (
-              <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-medium tabular-nums">
+              <span className="text-[11px] opacity-75 font-medium tabular-nums">
                 {activeTags.length + availableTags.length}
               </span>
             )}
@@ -368,13 +370,13 @@ const TagsSection = memo(
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder={t('filterTagsPlaceholder')}
                   aria-label={t('filterTagsPlaceholder')}
-                  className="w-full h-7 pl-2 pr-6 bg-white/80 border border-zinc-200 rounded-md text-[11px] text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:border-brand-500 focus:bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900 transition-colors"
+                  className="ui-input w-full !h-7 !text-[11.5px] !pl-2 !pr-6"
                 />
                 {filter && (
                   <button
                     type="button"
                     onClick={() => setFilter('')}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-[var(--text-muted)] hover:text-[var(--text)] rounded"
                     aria-label={t('clearSearch')}
                   >
                     <X className="w-3 h-3" />
@@ -384,7 +386,7 @@ const TagsSection = memo(
             )}
 
             {editingTag && (
-              <div className="flex items-center gap-1 p-1 rounded-md bg-white dark:bg-zinc-900 border border-brand-400 shadow-sm">
+              <div className="flex items-center gap-1 p-1 rounded-[var(--radius)] bg-[var(--surface)] border border-[var(--accent)]">
                 <input
                   autoFocus
                   value={renameDraft}
@@ -398,12 +400,12 @@ const TagsSection = memo(
                       setRenameDraft('');
                     }
                   }}
-                  className="flex-1 min-w-0 bg-transparent text-[11.5px] px-1 text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                  className="flex-1 min-w-0 bg-transparent text-[11.5px] px-1 text-[var(--text)] focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={commitRename}
-                  className="p-1 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/50 rounded"
+                  className="p-1 text-[var(--accent)] hover:bg-[rgba(59,130,246,0.12)] rounded"
                   aria-label={t('save')}
                 >
                   <Check className="w-3 h-3" />
@@ -414,7 +416,7 @@ const TagsSection = memo(
                     setEditingTag(null);
                     setRenameDraft('');
                   }}
-                  className="p-1 text-zinc-400 hover:text-zinc-700 rounded"
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text)] rounded"
                   aria-label={t('cancel')}
                 >
                   <X className="w-3 h-3" />
@@ -428,13 +430,13 @@ const TagsSection = memo(
                   key={`active-${tag}`}
                   type="button"
                   onClick={() => onToggleTag(tag)}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors border bg-brand-50 border-brand-200 text-brand-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 dark:bg-brand-950/50 dark:border-brand-800 dark:text-brand-300 dark:hover:bg-red-950/40 dark:hover:border-red-900 dark:hover:text-red-400 group"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-[6px] text-[11px] font-medium transition-colors border bg-[rgba(59,130,246,0.14)] border-[color-mix(in_srgb,var(--accent)_38%,var(--border))] text-[var(--accent)] hover:bg-[rgba(239,68,68,0.12)] hover:border-[rgba(239,68,68,0.35)] hover:text-[var(--danger)] group"
                 >
                   <Hash className="w-3 h-3 opacity-70 group-hover:hidden" />
                   <X className="w-3 h-3 hidden group-hover:block" />
                   <span>{tag}</span>
                   {tagCounts[tag] ? (
-                    <span className="text-[10px] opacity-65 tabular-nums">{tagCounts[tag]}</span>
+                    <span className="text-[10px] opacity-70 tabular-nums">{tagCounts[tag]}</span>
                   ) : null}
                 </button>
               ))}
@@ -442,23 +444,21 @@ const TagsSection = memo(
               {shownAvailable.map((tag) => (
                 <div
                   key={`avail-${tag}`}
-                  className="group/tag inline-flex items-center rounded-md border bg-white/80 border-zinc-200/90 hover:border-zinc-300 dark:bg-zinc-900/60 dark:border-zinc-700/80 dark:hover:border-zinc-600 transition-colors overflow-hidden"
+                  className="group/tag inline-flex items-center rounded-[6px] border bg-[var(--bg)] border-[var(--border)] hover:border-[var(--text-muted)] transition-colors overflow-hidden"
                 >
                   <button
                     type="button"
                     onClick={() => onToggleTag(tag)}
-                    className="flex items-center gap-1 pl-2 pr-1.5 py-0.5 text-[11px] font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+                    className="flex items-center gap-1 pl-2 pr-1.5 py-0.5 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     <Hash className="w-2.5 h-2.5 opacity-60" />
                     <span>{tag}</span>
                     {tagCounts[tag] ? (
-                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 tabular-nums">
-                        {tagCounts[tag]}
-                      </span>
+                      <span className="text-[10px] opacity-70 tabular-nums">{tagCounts[tag]}</span>
                     ) : null}
                   </button>
                   {(onRenameTag || onDeleteTag) && (
-                    <span className="hidden group-hover/tag:inline-flex items-center pr-1 gap-0.5 border-l border-zinc-200/70 dark:border-zinc-700/70 pl-0.5">
+                    <span className="hidden group-hover/tag:inline-flex items-center pr-1 gap-0.5 border-l border-[var(--border)] pl-0.5">
                       {onRenameTag && (
                         <button
                           type="button"
@@ -467,7 +467,7 @@ const TagsSection = memo(
                             setEditingTag(tag);
                             setRenameDraft(tag);
                           }}
-                          className="p-0.5 text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 rounded"
+                          className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent)] rounded"
                           title={t('renameTag')}
                           aria-label={t('renameTag')}
                         >
@@ -481,7 +481,7 @@ const TagsSection = memo(
                             e.stopPropagation();
                             onDeleteTag(tag);
                           }}
-                          className="p-0.5 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 rounded"
+                          className="p-0.5 text-[var(--text-muted)] hover:text-[var(--danger)] rounded"
                           title={t('deleteTag')}
                           aria-label={t('deleteTag')}
                         >
@@ -498,7 +498,7 @@ const TagsSection = memo(
               <button
                 type="button"
                 onClick={() => setShowAll(true)}
-                className="self-start text-[11px] text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 font-medium px-1"
+                className="self-start text-[11px] text-[var(--accent)] hover:underline font-medium px-1"
               >
                 {t('showMoreTags', { n: String(hiddenCount) })}
               </button>
@@ -507,13 +507,15 @@ const TagsSection = memo(
               <button
                 type="button"
                 onClick={() => setShowAll(false)}
-                className="self-start text-[11px] text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 font-medium px-1"
+                className="self-start text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] font-medium px-1"
               >
                 {t('showLessTags')}
               </button>
             )}
             {filterLower && totalAvailable === 0 && (
-              <p className="text-[11px] text-zinc-400 italic px-1">{t('noMatchingTags')}</p>
+              <p className="text-[11px] text-[var(--text-muted)] italic px-1">
+                {t('noMatchingTags')}
+              </p>
             )}
           </div>
         )}
@@ -524,7 +526,7 @@ const TagsSection = memo(
 
 TagsSection.displayName = 'TagsSection';
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+// ─── Main Sidebar (*2k standard) ────────────────────────────────────────────
 
 export function Sidebar({
   collections,
@@ -701,52 +703,79 @@ export function Sidebar({
   const themeModeLabel =
     theme === 'dark' ? t('themeDark') : theme === 'light' ? t('themeLight') : t('themeSystem');
 
+  const driveTitle = gdrive?.needsReauth
+    ? t('gdriveStatusNeedsReauth')
+    : gdrive?.busy
+      ? t('gdriveSyncing')
+      : gdrive?.connected
+        ? `${t('gdriveStatusSynced')}${gdrive.email ? ` · ${gdrive.email}` : ''}`
+        : t('gdriveMenuTitle');
+
   return (
-    <div
+    <aside
       ref={sidebarRef}
       style={{ width: `${width}px` }}
-      className="relative bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200/80 dark:border-zinc-800 flex flex-col h-full z-20 shrink-0 select-none"
+      className="relative bg-[var(--surface)] border-r border-[var(--border)] flex flex-col h-full z-20 shrink-0 select-none"
     >
-      {/* Header */}
-      <div className="px-3.5 py-3 shrink-0 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800">
-        <div className="flex items-center gap-2 min-w-0">
+      {/* Brand Header (*2k standard: 28×28 rounded-7px icon + name + tagline + Drive dot) */}
+      <div className="px-3 py-3 shrink-0 flex items-center justify-between gap-2 border-b border-[var(--border)]">
+        <div className="flex items-center gap-2.5 min-w-0">
           <img
-            src={chrome.runtime.getURL('public/icons/icon-128.png')}
+            src={chrome.runtime.getURL('public/icons/icon-48.png')}
             alt="Bookmark Manager"
-            className="w-6 h-6 rounded-md shrink-0"
+            className="w-7 h-7 rounded-[7px] shrink-0"
           />
-          <h1 className="text-[13.5px] font-bold tracking-tight text-zinc-900 dark:text-zinc-50 truncate">
-            {t('appName')}
-          </h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-[13.5px] font-bold leading-tight text-[var(--text)] truncate m-0">
+                {t('appBrand')}
+              </h1>
+              {(onOpenGDrive || onSyncGDrive) && (
+                <DriveStatusDot
+                  gdrive={gdrive}
+                  title={driveTitle}
+                  onClick={() => {
+                    if (gdrive?.connected && !gdrive.needsReauth && onSyncGDrive) onSyncGDrive();
+                    else if (onOpenGDrive) onOpenGDrive();
+                  }}
+                />
+              )}
+            </div>
+            <p className="text-[11px] leading-tight text-[var(--text-muted)] truncate m-0 mt-0.5">
+              {t('appTagline')}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          {onOpenSidePanel && (
-            <button
-              type="button"
-              onClick={onOpenSidePanel}
-              className="btn-icon-sm dark:hover:bg-zinc-800"
-              title={t('openSidePanel')}
-              aria-label={t('openSidePanel')}
-            >
-              <PanelRight className="w-4 h-4" />
-            </button>
-          )}
-          {onOpenDashboard && (
-            <button
-              type="button"
-              onClick={onOpenDashboard}
-              className="btn-icon-sm dark:hover:bg-zinc-800"
-              title={t('openDashboard')}
-              aria-label={t('openDashboard')}
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+        {(onOpenSidePanel || onOpenDashboard) && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onOpenSidePanel && (
+              <button
+                type="button"
+                onClick={onOpenSidePanel}
+                className="popup-icon-btn"
+                title={t('openSidePanel')}
+                aria-label={t('openSidePanel')}
+              >
+                <PanelRight size={15} />
+              </button>
+            )}
+            {onOpenDashboard && (
+              <button
+                type="button"
+                onClick={onOpenDashboard}
+                className="popup-icon-btn"
+                title={t('openDashboard')}
+                aria-label={t('openDashboard')}
+              >
+                <Maximize2 size={15} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Scrollable Nav */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-2.5 py-3 space-y-4">
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-3 space-y-4">
         {/* Collections */}
         <div
           onDragOver={(e) => {
@@ -764,10 +793,10 @@ export function Sidebar({
           }}
         >
           <div
-            className={`flex items-center justify-between px-2 py-0.5 mb-1 rounded-md transition-colors ${
+            className={`flex items-center justify-between px-2 py-0.5 mb-1 rounded-[6px] transition-colors ${
               isRootDragOver
-                ? 'ring-2 ring-brand-400 ring-inset bg-brand-50 dark:bg-brand-950/40'
-                : 'hover:bg-zinc-200/50 dark:hover:bg-zinc-800/60'
+                ? 'ring-2 ring-[var(--accent)] ring-inset bg-[rgba(59,130,246,0.12)]'
+                : 'hover:bg-[var(--surface-2)]'
             }`}
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes('application/collection-id')) {
@@ -794,7 +823,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => setIsCollectionsCollapsed((prev) => !prev)}
-              className="flex items-center gap-1.5 py-1 w-full text-left text-[12px] font-semibold text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              className="flex items-center gap-1.5 py-1 w-full text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
               aria-expanded={!isCollectionsCollapsed}
             >
               <ChevronRight
@@ -803,14 +832,14 @@ export function Sidebar({
                 }`}
               />
               <span>{t('collections')}</span>
-              <span className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500 tabular-nums">
+              <span className="text-[11px] font-medium opacity-75 tabular-nums">
                 {collections.length}
               </span>
             </button>
             <button
               type="button"
               onClick={onNewCollection}
-              className="p-1 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition-colors shrink-0"
+              className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface)] transition-colors shrink-0"
               title={t('newCollection')}
               aria-label={t('newCollection')}
             >
@@ -819,7 +848,7 @@ export function Sidebar({
           </div>
 
           {isRootDragOver && (
-            <p className="px-2 pb-1 text-[11px] font-medium text-brand-600 dark:text-brand-400">
+            <p className="px-2 pb-1 text-[11px] font-medium text-[var(--accent)]">
               {t('dropToRoot')}
             </p>
           )}
@@ -882,7 +911,7 @@ export function Sidebar({
         )}
 
         {/* Utility Views */}
-        <div className="flex flex-col gap-0.5 pt-2.5 border-t border-zinc-200/80 dark:border-zinc-800">
+        <div className="flex flex-col gap-0.5 pt-2.5 border-t border-[var(--border)]">
           <NavItem
             id={COLLECTION.UNSORTED}
             label={t('unsorted')}
@@ -908,7 +937,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => setIsSmartCollapsed((prev) => !prev)}
-            className="flex items-center gap-1.5 w-full px-2 py-1 text-left text-[12px] font-semibold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/50 rounded-md dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+            className="flex items-center gap-1.5 w-full px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px] transition-colors"
             aria-expanded={isSmartExpanded}
           >
             <ChevronRight
@@ -969,7 +998,8 @@ export function Sidebar({
                 count={bookmarkCounts[SMART.BROKEN] || 0}
                 onSelect={handleSelectCollection}
               />
-              {(bookmarkCounts[SMART.DUPLICATES] || 0) > 0 || activeCollection === SMART.DUPLICATES ? (
+              {(bookmarkCounts[SMART.DUPLICATES] || 0) > 0 ||
+              activeCollection === SMART.DUPLICATES ? (
                 <NavItem
                   id={SMART.DUPLICATES}
                   label={t('smartDuplicates')}
@@ -985,49 +1015,41 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Footer: Settings + Quick Theme Toggle */}
-      <div className="px-2.5 py-2 border-t border-zinc-200/80 dark:border-zinc-800 shrink-0 relative flex items-center gap-1">
+      {/* Footer: Settings + Theme Toggle (*2k opt-nav-bottom) */}
+      <div className="px-2 py-2 border-t border-[var(--border)] shrink-0 relative flex items-center gap-1">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             setShowSettings(!showSettings);
           }}
-          className={`flex-1 min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-colors text-[13px] font-medium ${
+          className={`flex-1 min-w-0 flex items-center gap-2.5 h-[34px] px-2.5 rounded-[var(--radius)] transition-colors text-[13px] font-medium ${
             showSettings
-              ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm border border-zinc-200/80 dark:border-zinc-700'
-              : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/70'
+              ? 'bg-[var(--surface-2)] text-[var(--text)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'
           }`}
         >
           <Settings className="w-4 h-4 shrink-0" />
           <span className="truncate">{t('settings')}</span>
-          {gdrive?.connected && (
-            <span
-              className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${
-                gdrive.needsReauth ? 'bg-amber-500' : 'bg-emerald-500'
-              }`}
-              title={gdrive.needsReauth ? t('gdriveStatusNeedsReauth') : t('gdriveStatusSynced')}
-            />
-          )}
         </button>
 
         {onCycleTheme && (
           <button
             type="button"
             onClick={onCycleTheme}
-            className="btn-icon-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            className="popup-icon-btn"
             title={t('switchTheme', { mode: themeModeLabel })}
             aria-label={t('switchTheme', { mode: themeModeLabel })}
           >
-            <ThemeIcon className="w-4 h-4" />
+            <ThemeIcon size={16} />
           </button>
         )}
 
         {showSettings && (
-          <div className="absolute bottom-full left-2.5 mb-1.5 w-64 bg-white dark:bg-zinc-900 rounded-xl shadow-pop border border-zinc-200 dark:border-zinc-700 py-1.5 z-50 text-[13px] overflow-hidden animate-slide-up">
+          <div className="absolute bottom-full left-2 mb-1.5 w-64 bg-[var(--surface)] rounded-[var(--radius-lg)] shadow-pop border border-[var(--border)] py-1.5 z-50 text-[13px] overflow-hidden animate-slide-up">
             {(onOpenGDrive || onSyncGDrive) && (
-              <div className="px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 mb-1">
-                <p className="px-2 pb-1 text-[11px] font-semibold text-zinc-400 flex items-center gap-1">
+              <div className="px-2 py-1 border-b border-[var(--border)] mb-1">
+                <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] flex items-center gap-1.5 m-0">
                   <Cloud className="w-3 h-3" />
                   {t('gdriveSection')}
                 </p>
@@ -1036,34 +1058,34 @@ export function Sidebar({
                   disabled={gdrive?.busy}
                   onClick={() => {
                     setShowSettings(false);
-                    if (gdrive?.connected && onSyncGDrive) onSyncGDrive();
+                    if (gdrive?.connected && !gdrive.needsReauth && onSyncGDrive) onSyncGDrive();
                     else if (onOpenGDrive) onOpenGDrive();
                     else onSyncGDrive?.();
                   }}
-                  className="w-full flex items-center text-left gap-2.5 px-2 py-2 rounded-lg transition-colors text-zinc-700 dark:text-zinc-200 hover:bg-brand-50 dark:hover:bg-brand-950/40 hover:text-brand-700 dark:hover:text-brand-300 disabled:opacity-60"
+                  className="w-full flex items-center text-left gap-2.5 px-2 py-2 rounded-[var(--radius)] transition-colors text-[var(--text)] hover:bg-[var(--surface-2)] disabled:opacity-60"
                 >
                   {gdrive?.busy ? (
-                    <Loader2 className="w-4 h-4 shrink-0 animate-spin text-brand-600" />
+                    <Loader2 className="w-4 h-4 shrink-0 ui-spin text-[var(--accent)]" />
                   ) : gdrive?.connected ? (
-                    <Cloud className="w-4 h-4 shrink-0 text-brand-600 dark:text-brand-400" />
+                    <Cloud className="w-4 h-4 shrink-0 text-[var(--accent)]" />
                   ) : (
-                    <CloudOff className="w-4 h-4 shrink-0 text-zinc-400" />
+                    <CloudOff className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
                   )}
                   <div className="min-w-0 flex-1">
                     <span className="block font-medium truncate">{t('gdriveMenuTitle')}</span>
-                    <span className="block text-[11px] leading-snug text-zinc-400 truncate">
+                    <span className="block text-[11px] leading-snug text-[var(--text-muted)] truncate">
                       {gdrive?.busy
                         ? t('gdriveSyncing')
                         : gdrive?.needsReauth
                           ? t('gdriveStatusNeedsReauth')
                           : gdrive?.connected
-                          ? gdrive.email
-                            ? `${t('gdriveConnectedAs')} ${gdrive.email}`
-                            : t('gdriveStatusSynced')
-                          : t('gdriveMenuHint')}
+                            ? gdrive.email
+                              ? `${t('gdriveConnectedAs')} ${gdrive.email}`
+                              : t('gdriveStatusSynced')
+                            : t('gdriveMenuHint')}
                     </span>
                   </div>
-                  <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 shrink-0">
+                  <span className="text-[11px] font-semibold text-[var(--accent)] shrink-0 whitespace-nowrap">
                     {gdrive?.needsReauth
                       ? t('gdriveReconnect')
                       : gdrive?.connected
@@ -1078,7 +1100,7 @@ export function Sidebar({
                       setShowSettings(false);
                       onOpenGDrive ? onOpenGDrive() : onOpenPreferences();
                     }}
-                    className="w-full text-left px-2 py-1 text-[11px] text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400"
+                    className="w-full text-left px-2 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)]"
                   >
                     {t('gdriveSection')} → {t('preferences')}
                   </button>
@@ -1087,45 +1109,45 @@ export function Sidebar({
             )}
 
             {onOpenPreferences && (
-              <div className="px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 mb-1">
+              <div className="px-2 py-1 border-b border-[var(--border)] mb-1">
                 <button
                   type="button"
                   onClick={() => {
                     setShowSettings(false);
                     onOpenPreferences();
                   }}
-                  className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px] transition-colors"
                 >
-                  <Settings className="w-4 h-4 shrink-0" />
+                  <Settings className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
                   <span className="font-medium truncate">{t('preferences')}</span>
                 </button>
               </div>
             )}
 
-            <div className="px-2 py-1">
+            <div className="px-2 py-1 space-y-0.5">
               <button
                 type="button"
                 onClick={onImportJson}
-                className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px] transition-colors"
               >
-                <Upload className="w-4 h-4 shrink-0" />
+                <Upload className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
                 <span className="font-medium truncate">{t('importJson')}</span>
               </button>
               <button
                 type="button"
                 onClick={onImport}
-                className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px] transition-colors"
               >
-                <Book className="w-4 h-4 shrink-0" />
+                <Book className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
                 <span className="font-medium truncate">{t('importBrowser')}</span>
               </button>
               {onExport && (
                 <button
                   type="button"
                   onClick={onExport}
-                  className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px] transition-colors"
                 >
-                  <Download className="w-4 h-4 shrink-0" />
+                  <Download className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
                   <span className="font-medium truncate">{t('exportJson')}</span>
                 </button>
               )}
@@ -1160,15 +1182,15 @@ export function Sidebar({
             setWidth(SIDEBAR_DEFAULT_WIDTH);
           }
         }}
-        className="absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize group z-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        className="absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize group z-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         title="Drag to resize, double-click to reset"
       >
         <div
           className={`absolute top-0 right-1 h-full w-px transition-colors ${
-            isResizing ? 'bg-brand-500' : 'bg-transparent group-hover:bg-brand-400/60'
+            isResizing ? 'bg-[var(--accent)]' : 'bg-transparent group-hover:bg-[var(--accent)]'
           }`}
         />
       </div>
-    </div>
+    </aside>
   );
 }

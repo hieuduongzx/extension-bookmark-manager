@@ -34,9 +34,7 @@ export type ReorderPosition = 'before' | 'after';
 interface BookmarkCardProps {
   bookmark: Bookmark;
   viewMode: 'grid' | 'list' | 'masonry';
-  /** Closest saved ancestor when this bookmark is a sub-page of another one */
   relatedRoot?: Bookmark;
-  /** Optional collection label shown when viewing All/Smart/Search */
   collectionName?: string;
   onCollectionClick?: (collectionId: string) => void;
   onEdit: (b: Bookmark) => void;
@@ -67,7 +65,7 @@ function HighlightText({ text, query }: { text: string; query?: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-brand-100/90 dark:bg-brand-900/70 text-brand-950 dark:text-brand-100 rounded-sm px-0.5">
+      <mark className="bg-[rgba(59,130,246,0.2)] text-[var(--text)] rounded-sm px-0.5">
         {text.slice(idx, idx + q.length)}
       </mark>
       {text.slice(idx + q.length)}
@@ -75,7 +73,7 @@ function HighlightText({ text, query }: { text: string; query?: string }) {
   );
 }
 
-// ─── Extracted Sub-Components ───────────────────────────────────────────────
+// ─── Actions Popover Menu (*2k tokens) ───────────────────────────────────────
 
 interface ActionsMenuProps {
   bookmark: Bookmark;
@@ -144,8 +142,8 @@ function ActionsMenu({
 
   useLayoutEffect(() => {
     const update = () => {
-      const menuWidth = 188;
-      const menuHeight = 224;
+      const menuWidth = 192;
+      const menuHeight = 228;
       const margin = 8;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
@@ -200,15 +198,15 @@ function ActionsMenu({
   };
 
   const itemClass =
-    'flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 focus:bg-zinc-100 dark:text-zinc-200 dark:hover:text-zinc-50 dark:hover:bg-zinc-700 dark:focus:bg-zinc-700 rounded-md cursor-pointer font-medium transition-colors w-full text-left focus:outline-none';
+    'flex items-center gap-2 px-2.5 py-1.5 text-[12.5px] text-[var(--text)] hover:bg-[var(--surface-2)] focus:bg-[var(--surface-2)] rounded-[6px] cursor-pointer font-medium transition-colors w-full text-left focus:outline-none';
 
   return createPortal(
     <div
       ref={menuRef}
       role="menu"
       aria-label="Bookmark actions"
-      style={{ position: 'fixed', top: pos.top, left: pos.left, width: 188 }}
-      className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-pop rounded-lg overflow-hidden z-[1000] animate-scale-in focus:outline-none"
+      style={{ position: 'fixed', top: pos.top, left: pos.left, width: 192 }}
+      className="bg-[var(--surface)] border border-[var(--border)] shadow-pop rounded-[var(--radius)] overflow-hidden z-[1000] animate-scale-in focus:outline-none"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={onMenuKeyDown}
     >
@@ -224,11 +222,11 @@ function ActionsMenu({
           }}
           className={itemClass}
         >
-          <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
+          <ExternalLink className="w-3.5 h-3.5 text-[var(--text-muted)]" />
           {t('openLink')}
         </a>
         <button type="button" role="menuitem" onClick={openBackground} className={itemClass}>
-          <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400" />
+          <ArrowUpRight className="w-3.5 h-3.5 text-[var(--text-muted)]" />
           {t('openBackgroundTab')}
         </button>
         <button
@@ -241,7 +239,7 @@ function ActionsMenu({
           }}
           className={itemClass}
         >
-          <Copy className="w-3.5 h-3.5 text-zinc-400" />
+          <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />
           {t('copyUrl')}
         </button>
         {!isTrash && onTogglePin && (
@@ -255,7 +253,11 @@ function ActionsMenu({
             }}
             className={itemClass}
           >
-            <Pin className={`w-3.5 h-3.5 ${bookmark.pinned ? 'text-brand-500 fill-current' : 'text-zinc-400'}`} />
+            <Pin
+              className={`w-3.5 h-3.5 ${
+                bookmark.pinned ? 'text-[var(--accent)] fill-current' : 'text-[var(--text-muted)]'
+              }`}
+            />
             {bookmark.pinned ? t('unpin') : t('pin')}
           </button>
         )}
@@ -270,7 +272,7 @@ function ActionsMenu({
             }}
             className={itemClass}
           >
-            <Edit className="w-3.5 h-3.5 text-zinc-400" />
+            <Edit className="w-3.5 h-3.5 text-[var(--text-muted)]" />
             {t('edit')}
           </button>
         )}
@@ -283,13 +285,13 @@ function ActionsMenu({
               onClose();
               onRestore(bookmark.id);
             }}
-            className="flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-brand-600 hover:bg-brand-50 focus:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/50 dark:focus:bg-brand-950/50 rounded-md cursor-pointer font-medium transition-colors w-full text-left focus:outline-none"
+            className="flex items-center gap-2 px-2.5 py-1.5 text-[12.5px] text-[var(--accent)] hover:bg-[rgba(59,130,246,0.12)] focus:bg-[rgba(59,130,246,0.12)] rounded-[6px] cursor-pointer font-medium transition-colors w-full text-left focus:outline-none"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             {t('restore')}
           </button>
         )}
-        <div className="h-[1px] bg-zinc-100 dark:bg-zinc-700 my-0.5 mx-1" />
+        <div className="h-[1px] bg-[var(--border)] my-0.5 mx-1" />
         <button
           type="button"
           role="menuitem"
@@ -298,7 +300,7 @@ function ActionsMenu({
             onClose();
             onDelete(bookmark.id, !!isTrash);
           }}
-          className="flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-red-600 hover:bg-red-50 focus:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 dark:focus:bg-red-950/40 rounded-md cursor-pointer font-medium transition-colors w-full text-left focus:outline-none"
+          className="flex items-center gap-2 px-2.5 py-1.5 text-[12.5px] text-[var(--danger)] hover:bg-[rgba(239,68,68,0.1)] focus:bg-[rgba(239,68,68,0.1)] rounded-[6px] cursor-pointer font-medium transition-colors w-full text-left focus:outline-none"
         >
           <Trash2 className="w-3.5 h-3.5" />
           {isTrash ? t('deletePermanently') : t('moveToTrash')}
@@ -326,10 +328,8 @@ function CheckboxToggle({ bookmarkId, isSelected, onToggleSelect }: CheckboxTogg
         onToggleSelect(bookmarkId, !isSelected, e.shiftKey);
       }}
       aria-label={isSelected ? 'Deselect bookmark' : 'Select bookmark'}
-      className={`p-1 rounded-md transition-colors bg-white/90 dark:bg-zinc-800/90 ${
-        isSelected
-          ? 'text-brand-600 dark:text-brand-400'
-          : 'text-zinc-300 hover:text-zinc-500 dark:text-zinc-600 dark:hover:text-zinc-400'
+      className={`p-1 rounded-[6px] transition-colors bg-[var(--surface)]/90 ${
+        isSelected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
       }`}
     >
       {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
@@ -356,14 +356,14 @@ function PinButton({ bookmarkId, isPinned, onTogglePin, locale, surface = false 
         e.stopPropagation();
         onTogglePin(bookmarkId);
       }}
-      className={`p-1.5 rounded-md transition-all ${
+      className={`p-1.5 rounded-[6px] transition-opacity ${
         surface
-          ? 'bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm border border-zinc-200/70 dark:border-zinc-700/70 shadow-sm'
-          : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+          ? 'bg-[var(--surface)]/95 border border-[var(--border)]'
+          : 'hover:bg-[var(--surface-2)]'
       } ${
         isPinned
-          ? 'opacity-100 text-brand-600 dark:text-brand-400'
-          : 'opacity-0 group-hover:opacity-100 focus:opacity-100 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200'
+          ? 'opacity-100 text-[var(--accent)]'
+          : 'opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--text-muted)] hover:text-[var(--text)]'
       }`}
       title={isPinned ? t('unpinBookmark') : t('pinBookmark')}
       aria-label={isPinned ? t('unpinBookmark') : t('pinBookmark')}
@@ -501,18 +501,18 @@ function BookmarkCardInner({
         role="button"
         tabIndex={0}
         aria-label={`Open ${bookmark.title || hostname}`}
-        className={`group flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border transition-all duration-150 cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+        className={`group flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-[var(--radius-lg)] border transition-colors duration-150 cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
           isSelected
-            ? 'bg-brand-50/70 border-brand-300 dark:bg-brand-950/40 dark:border-brand-700'
+            ? 'bg-[rgba(59,130,246,0.1)] border-[var(--accent)]'
             : isFocused
-              ? 'bg-zinc-50 border-brand-400 ring-2 ring-brand-500/20 dark:bg-zinc-800/70 dark:border-brand-500'
-              : 'bg-white/60 border-transparent hover:border-zinc-200 hover:bg-zinc-50/90 dark:bg-zinc-900/40 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/60'
+              ? 'bg-[var(--surface)] border-[var(--accent)] ring-2 ring-[rgba(59,130,246,0.2)]'
+              : 'bg-[var(--surface)] border-[var(--border)] hover:bg-[var(--surface-2)]'
         }`}
         title={`${bookmark.title || hostname}\n${bookmark.url}`}
       >
-        <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
+        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1">
           {isBrokenLink(bookmark) && (
-            <span className="w-2 h-2 rounded-full bg-red-500" title={t('brokenBadge')} />
+            <span className="w-2 h-2 rounded-full bg-[var(--danger)]" title={t('brokenBadge')} />
           )}
         </div>
 
@@ -532,7 +532,7 @@ function BookmarkCardInner({
           )}
         </div>
 
-        <div className="w-11 h-11 rounded-xl shrink-0 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200/70 dark:border-zinc-700/70 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:scale-105 shadow-sm">
+        <div className="w-11 h-11 rounded-[var(--radius-lg)] shrink-0 bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center overflow-hidden">
           <img
             src={faviconUrl}
             alt=""
@@ -544,7 +544,7 @@ function BookmarkCardInner({
           />
         </div>
 
-        <span className="text-[11px] font-medium text-zinc-800 dark:text-zinc-100 line-clamp-2 text-center max-w-full px-0.5 leading-tight break-words">
+        <span className="text-[11.5px] font-medium text-[var(--text)] line-clamp-2 text-center max-w-full px-0.5 leading-tight break-words">
           <HighlightText text={bookmark.title || hostname} query={highlightQuery} />
         </span>
 
@@ -559,9 +559,9 @@ function BookmarkCardInner({
               setShowMenu((v) => !v);
             }}
             aria-label="More actions"
-            className={`p-1 rounded-md transition-opacity bg-white/90 dark:bg-zinc-800/90 ${
+            className={`p-1 rounded-[6px] transition-opacity bg-[var(--surface)]/95 ${
               showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
-            } text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200`}
+            } text-[var(--text-muted)] hover:text-[var(--text)]`}
           >
             <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
@@ -587,7 +587,7 @@ function BookmarkCardInner({
     );
   }
 
-  // ─── List View ──────────────────────────────────────────────────────────────
+  // ─── List View (*2k clean row inside unified card surface) ──────────────────
   if (viewMode === 'list') {
     const visibleTags = compact ? [] : bookmark.tags.slice(0, 3);
     const extraTags = compact ? 0 : Math.max(0, bookmark.tags.length - 3);
@@ -624,25 +624,29 @@ function BookmarkCardInner({
         role="button"
         tabIndex={0}
         aria-label={`Open ${bookmark.title || hostname}`}
-        className={`group flex items-center gap-3 ${compact ? 'px-3 py-2 rounded-lg border border-transparent hover:border-zinc-200/80 dark:hover:border-zinc-700/80' : 'px-5 py-3 border-b border-zinc-100 dark:border-zinc-800/80 last:border-b-0'} transition-colors cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${
+        className={`group flex items-center gap-3 ${
+          compact
+            ? 'px-2.5 py-2 rounded-[var(--radius)] border border-transparent hover:border-[var(--border)]'
+            : 'px-4 py-3'
+        } transition-colors duration-120 cursor-pointer relative focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] ${
           isSelected
-            ? 'bg-brand-50/75 dark:bg-brand-950/40'
+            ? 'bg-[rgba(59,130,246,0.1)]'
             : isFocused
-              ? 'bg-brand-50/40 dark:bg-brand-950/25 ring-1 ring-inset ring-brand-400/60'
-              : 'bg-white hover:bg-zinc-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/50'
+              ? 'bg-[rgba(59,130,246,0.08)] ring-1 ring-inset ring-[var(--accent)]'
+              : 'bg-transparent hover:bg-[var(--surface-2)]/70'
         } ${isDragging ? 'opacity-40' : 'opacity-100'}`}
       >
         {dropIndicator === 'top' && (
-          <span className="absolute -top-px left-0 right-0 h-0.5 bg-brand-500 rounded-full pointer-events-none z-10" />
+          <span className="absolute -top-px left-0 right-0 h-0.5 bg-[var(--accent)] pointer-events-none z-10" />
         )}
         {dropIndicator === 'bottom' && (
-          <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-brand-500 rounded-full pointer-events-none z-10" />
+          <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-[var(--accent)] pointer-events-none z-10" />
         )}
 
         <div className="flex items-center gap-3 min-w-0 flex-1">
           {draggable && !isSelectMode && (
             <div
-              className="text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-zinc-500 dark:text-zinc-600 dark:hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0 select-none transition-opacity"
+              className="text-[var(--text-muted)] opacity-0 group-hover:opacity-70 hover:!opacity-100 cursor-grab active:cursor-grabbing shrink-0 select-none transition-opacity"
               onClick={(e) => e.stopPropagation()}
             >
               <GripVertical className="w-3.5 h-3.5" />
@@ -656,7 +660,9 @@ function BookmarkCardInner({
 
           {/* Favicon */}
           <div
-            className={`${compact ? 'w-7 h-7 rounded-md' : 'w-9 h-9 rounded-lg'} shrink-0 bg-zinc-50 border border-zinc-200/80 dark:bg-zinc-800 dark:border-zinc-700/80 flex items-center justify-center overflow-hidden`}
+            className={`${
+              compact ? 'w-7 h-7 rounded-[6px]' : 'w-9 h-9 rounded-[var(--radius)]'
+            } shrink-0 bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center overflow-hidden`}
           >
             <img
               src={faviconUrl}
@@ -673,21 +679,21 @@ function BookmarkCardInner({
           <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
             <div className="flex items-center gap-2 min-w-0">
               <h3
-                className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-50 truncate min-w-0"
+                className="text-[13.5px] font-semibold text-[var(--text)] truncate min-w-0 m-0"
                 title={bookmark.title || hostname}
               >
                 <HighlightText text={bookmark.title || hostname} query={highlightQuery} />
               </h3>
 
               {isBrokenLink(bookmark) && (
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[rgba(239,68,68,0.14)] text-[var(--danger)]">
                   {t('brokenBadge')}
                 </span>
               )}
 
               {relatedRoot && (
                 <span
-                  className="shrink-0 hidden sm:inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/60 border border-sky-200/60 dark:border-sky-800/60 text-sky-700 dark:text-sky-300 max-w-[140px] truncate"
+                  className="shrink-0 hidden sm:inline-flex items-center gap-0.5 text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-[rgba(59,130,246,0.1)] border border-[rgba(59,130,246,0.24)] text-[var(--accent)] max-w-[140px] truncate"
                   title={`${t('subPageOf')}: ${relatedTitle}\n${relatedRoot.url}`}
                 >
                   <CornerDownRight className="w-2.5 h-2.5 shrink-0" />
@@ -697,7 +703,7 @@ function BookmarkCardInner({
             </div>
 
             {/* Meta row: domain · collection · tags · date */}
-            <div className="flex items-center gap-2 min-w-0 text-[11.5px] text-zinc-500 dark:text-zinc-400">
+            <div className="flex items-center gap-2 min-w-0 text-[12px] text-[var(--text-muted)]">
               <span className="truncate max-w-[200px]" title={bookmark.url}>
                 {hostname}
               </span>
@@ -709,9 +715,9 @@ function BookmarkCardInner({
                     e.stopPropagation();
                     onCollectionClick?.(bookmark.collectionId);
                   }}
-                  className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-[10.5px] font-medium text-zinc-600 dark:text-zinc-300 shrink-0 max-w-[120px] transition-colors"
+                  className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[5px] bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--accent)] text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text)] shrink-0 max-w-[130px] transition-colors"
                 >
-                  <Folder className="w-2.5 h-2.5 opacity-70 shrink-0" />
+                  <Folder className="w-2.5 h-2.5 opacity-75 shrink-0" />
                   <span className="truncate">{collectionName}</span>
                 </button>
               )}
@@ -726,14 +732,14 @@ function BookmarkCardInner({
                         e.stopPropagation();
                         onTagClick?.(tag);
                       }}
-                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-brand-50/80 hover:bg-brand-100 dark:bg-brand-950/50 dark:hover:bg-brand-900/60 text-[10.5px] font-medium text-brand-700 dark:text-brand-300 transition-colors"
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[rgba(59,130,246,0.12)] hover:bg-[rgba(59,130,246,0.2)] text-[11px] font-medium text-[var(--accent)] transition-colors"
                     >
-                      <Hash className="w-2.5 h-2.5 opacity-60" />
+                      <Hash className="w-2.5 h-2.5 opacity-65" />
                       {tag}
                     </button>
                   ))}
                   {extraTags > 0 && (
-                    <span className="text-[10.5px] text-zinc-400 dark:text-zinc-500 font-medium">
+                    <span className="text-[11px] text-[var(--text-muted)] font-medium">
                       +{extraTags}
                     </span>
                   )}
@@ -741,14 +747,14 @@ function BookmarkCardInner({
               )}
 
               {!compact && (
-                <span className="hidden lg:inline text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 ml-auto">
+                <span className="hidden lg:inline text-[11.5px] text-[var(--text-muted)] shrink-0 ml-auto tabular-nums">
                   {relativeDate}
                 </span>
               )}
             </div>
 
             {!compact && bookmark.note && (
-              <p className="text-[12px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+              <p className="text-[12px] text-[var(--text-muted)] truncate mt-0.5 m-0">
                 {bookmark.note}
               </p>
             )}
@@ -765,10 +771,10 @@ function BookmarkCardInner({
                 e.stopPropagation();
                 void handleCopyUrl();
               }}
-              className={`p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 ${
+              className={`p-1.5 rounded-[6px] transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100 ${
                 copied
-                  ? 'opacity-100 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
-                  : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-500 dark:hover:text-zinc-200 dark:hover:bg-zinc-800'
+                  ? 'opacity-100 text-[var(--success)] bg-[rgba(34,197,94,0.12)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'
               }`}
               title={copied ? t('copied') : t('copyUrl')}
               aria-label={t('copyUrl')}
@@ -792,7 +798,7 @@ function BookmarkCardInner({
                 e.stopPropagation();
                 onEdit(bookmark);
               }}
-              className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-500 dark:hover:text-zinc-200 dark:hover:bg-zinc-800 transition-all"
+              className="p-1.5 rounded-[6px] opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition-opacity"
               title={t('edit')}
               aria-label={t('edit')}
             >
@@ -809,13 +815,9 @@ function BookmarkCardInner({
               setShowMenu((v) => !v);
             }}
             aria-label="More actions"
-            className={`p-1.5 rounded-md transition-opacity ${
+            className={`p-1.5 rounded-[6px] transition-opacity ${
               showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
-            } ${
-              isSelected
-                ? 'text-brand-600 hover:bg-brand-100 dark:text-brand-400 dark:hover:bg-brand-900/50'
-                : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-500 dark:hover:text-zinc-200 dark:hover:bg-zinc-800'
-            }`}
+            } text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]`}
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>
@@ -841,7 +843,7 @@ function BookmarkCardInner({
     );
   }
 
-  // ─── Grid (Card) View ───────────────────────────────────────────────────────
+  // ─── Grid (Card) View (*2k surface card, zero hover jump) ──────────────────
   const visibleTags = bookmark.tags.slice(0, 3);
   const extraTags = Math.max(0, bookmark.tags.length - 3);
   const hasCover = Boolean(bookmark.coverUrl) && !coverFailed;
@@ -860,12 +862,12 @@ function BookmarkCardInner({
       role="button"
       tabIndex={0}
       aria-label={`Open ${bookmark.title || hostname}`}
-      className={`group flex flex-col rounded-xl border transition-all duration-150 cursor-pointer relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900 ${
+      className={`group flex flex-col rounded-[var(--radius-lg)] border transition-colors duration-150 cursor-pointer relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
         isSelected
-          ? 'bg-brand-50/40 border-brand-400 shadow-md ring-1 ring-brand-300 dark:bg-brand-950/30 dark:border-brand-600 dark:ring-brand-800'
+          ? 'bg-[rgba(59,130,246,0.08)] border-[var(--accent)] ring-1 ring-[rgba(59,130,246,0.3)]'
           : isFocused
-            ? 'bg-white border-brand-400 shadow-md ring-2 ring-brand-500/25 dark:bg-zinc-900 dark:border-brand-500'
-            : 'bg-white border-zinc-200/80 hover:border-zinc-300 hover:shadow-md hover:-translate-y-0.5 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:border-zinc-700'
+            ? 'bg-[var(--surface)] border-[var(--accent)] ring-2 ring-[rgba(59,130,246,0.2)]'
+            : 'bg-[var(--surface)] border-[var(--border)] hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--border))]'
       }`}
     >
       {/* Floating Top-Right Quick Actions */}
@@ -884,10 +886,10 @@ function BookmarkCardInner({
             e.stopPropagation();
             void handleCopyUrl();
           }}
-          className={`p-1.5 rounded-md transition-all bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm border border-zinc-200/70 dark:border-zinc-700/70 shadow-sm ${
+          className={`p-1.5 rounded-[6px] transition-opacity bg-[var(--surface)]/95 border border-[var(--border)] ${
             copied
-              ? 'opacity-100 text-emerald-600 dark:text-emerald-400'
-              : 'opacity-0 group-hover:opacity-100 focus:opacity-100 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'
+              ? 'opacity-100 text-[var(--success)]'
+              : 'opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
           title={copied ? t('copied') : t('copyUrl')}
           aria-label={t('copyUrl')}
@@ -913,9 +915,9 @@ function BookmarkCardInner({
             setShowMenu((v) => !v);
           }}
           aria-label="More actions"
-          className={`p-1.5 rounded-md transition-opacity bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm border border-zinc-200/70 dark:border-zinc-700/70 shadow-sm ${
+          className={`p-1.5 rounded-[6px] transition-opacity bg-[var(--surface)]/95 border border-[var(--border)] ${
             showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
-          } text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100`}
+          } text-[var(--text-muted)] hover:text-[var(--text)]`}
         >
           <MoreHorizontal className="w-3.5 h-3.5" />
         </button>
@@ -923,8 +925,8 @@ function BookmarkCardInner({
 
       {/* Cover Banner */}
       <div
-        className={`w-full h-24 relative shrink-0 overflow-hidden border-b border-zinc-100 dark:border-zinc-800/80 ${
-          hasCover ? 'bg-zinc-100 dark:bg-zinc-800' : fallbackTint
+        className={`w-full h-24 relative shrink-0 overflow-hidden border-b border-[var(--border)] ${
+          hasCover ? 'bg-[var(--surface-2)]' : fallbackTint
         }`}
       >
         {hasCover ? (
@@ -932,7 +934,7 @@ function BookmarkCardInner({
             src={bookmark.coverUrl}
             alt=""
             loading="lazy"
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            className="w-full h-full object-cover"
             onError={() => setCoverFailed(true)}
           />
         ) : (
@@ -943,16 +945,15 @@ function BookmarkCardInner({
           </div>
         )}
 
-        {/* Top-left status badges */}
         <div className="absolute top-2 left-2 flex items-center gap-1">
           {isBrokenLink(bookmark) && (
-            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-600/90 text-white shadow-sm">
+            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--danger)] text-white">
               {t('brokenBadge')}
             </span>
           )}
           {relatedRoot && (
             <span
-              className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/90 dark:bg-zinc-900/90 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-800/70 shadow-sm"
+              className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-[var(--surface)]/95 text-[var(--accent)] border border-[var(--border)]"
               title={`${t('subPageOf')}: ${relatedTitle}\n${relatedRoot.url}`}
             >
               <CornerDownRight className="w-3 h-3" />
@@ -964,7 +965,7 @@ function BookmarkCardInner({
       {/* Card Body */}
       <div className="flex flex-col flex-1 p-3 pt-2.5 gap-1.5 min-w-0">
         <div className="flex items-start gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-lg shrink-0 bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 flex items-center justify-center overflow-hidden -mt-6 z-[1] shadow-sm ring-2 ring-white dark:ring-zinc-900">
+          <div className="w-7 h-7 rounded-[var(--radius)] shrink-0 bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center overflow-hidden -mt-6 z-[1] ring-2 ring-[var(--surface)]">
             <img
               src={faviconUrl}
               alt=""
@@ -976,7 +977,7 @@ function BookmarkCardInner({
             />
           </div>
           <h3
-            className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-50 line-clamp-2 leading-snug flex-1 min-w-0"
+            className="text-[13px] font-semibold text-[var(--text)] line-clamp-2 leading-snug flex-1 min-w-0 m-0"
             title={bookmark.title || hostname}
           >
             <HighlightText text={bookmark.title || hostname} query={highlightQuery} />
@@ -984,12 +985,11 @@ function BookmarkCardInner({
         </div>
 
         {bookmark.note && (
-          <p className="text-[11.5px] text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+          <p className="text-[12px] text-[var(--text-muted)] line-clamp-2 leading-relaxed m-0">
             {bookmark.note}
           </p>
         )}
 
-        {/* Tags */}
         {visibleTags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 pt-0.5">
             {visibleTags.map((tag) => (
@@ -1000,22 +1000,21 @@ function BookmarkCardInner({
                   e.stopPropagation();
                   onTagClick?.(tag);
                 }}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-zinc-100 hover:bg-brand-50 hover:text-brand-700 dark:bg-zinc-800 dark:hover:bg-brand-950/60 dark:hover:text-brand-300 text-[10.5px] font-medium text-zinc-600 dark:text-zinc-300 transition-colors"
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[var(--surface-2)] hover:bg-[rgba(59,130,246,0.14)] hover:text-[var(--accent)] text-[10.5px] font-medium text-[var(--text-muted)] transition-colors"
               >
                 <Hash className="w-2.5 h-2.5 opacity-60" />
                 {tag}
               </button>
             ))}
             {extraTags > 0 && (
-              <span className="text-[10.5px] text-zinc-400 dark:text-zinc-500 font-medium">
+              <span className="text-[10.5px] text-[var(--text-muted)] font-medium">
                 +{extraTags}
               </span>
             )}
           </div>
         )}
 
-        {/* Footer: domain + collection + date */}
-        <div className="mt-auto pt-1.5 flex items-center justify-between gap-2 text-[11px] text-zinc-400 dark:text-zinc-500 border-t border-zinc-100/80 dark:border-zinc-800/80">
+        <div className="mt-auto pt-2 flex items-center justify-between gap-2 text-[11px] text-[var(--text-muted)] border-t border-[var(--border)]">
           <span className="truncate min-w-0" title={bookmark.url}>
             {hostname}
           </span>
@@ -1027,7 +1026,7 @@ function BookmarkCardInner({
                   e.stopPropagation();
                   onCollectionClick?.(bookmark.collectionId);
                 }}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-[10px] font-medium text-zinc-600 dark:text-zinc-300 max-w-[96px] transition-colors"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--surface-2)] hover:text-[var(--text)] text-[10px] font-medium text-[var(--text-muted)] max-w-[96px] transition-colors"
               >
                 <Folder className="w-2.5 h-2.5 shrink-0 opacity-70" />
                 <span className="truncate">{collectionName}</span>
