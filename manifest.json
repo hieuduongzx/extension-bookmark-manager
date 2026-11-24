@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Bookmark Manager",
   "version": "1.2.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnlcpyo0QCYzsWjBhIrIYirFZpkvNaTHpb0qgirbmhL9uE8zNQ2rbAPXOrahHnacwLqTCsI0HtItPSe1/k47IHVGEXjwz/oD3aIB8LlcKbGP2dZfZHrBqn7yUdUnTiGcHyhBN3EFqW9DZPD0UxiSHvZeoRed4gSyjKRk0lsYj4N2Dbiz7vIqCozwTOkfzU3/tJAADkrEUgD51SXoeHRs4jPQCZP95nVwzGjZq9L/UFH6VRKOLWRRrjokCOW4JqnyOIYJ++KbQL7ZbfBTm1k+p+1E0ZC68Pi4ovGFHnbKrlssCMmTXf9nq/vTXf+CYNaNnjWGhqwmpSNBdoGkCSbzLqwIDAQAB",
   "description": "A beautiful bookmark manager inspired by Raindrop.io. Save, organize, and search your bookmarks with collections and tags.",
   "permissions": [
     "storage",
@@ -12,14 +13,9 @@
     "alarms",
     "identity"
   ],
-  "host_permissions": ["<all_urls>"],
-  "oauth2": {
-    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
-    "scopes": [
-      "https://www.googleapis.com/auth/drive.appdata",
-      "https://www.googleapis.com/auth/userinfo.email"
-    ]
-  },
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "icons": {
     "16": "public/icons/icon-16.png",
     "32": "public/icons/icon-32.png",

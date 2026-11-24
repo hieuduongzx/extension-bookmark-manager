@@ -29,3 +29,6 @@ Thumbs.db
 # Misc
 *.tmp
 *.temp
+
+# Chrome Web Store build (npm run build:store)
+dist-store/

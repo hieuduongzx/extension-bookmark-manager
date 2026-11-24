@@ -31,7 +31,7 @@ A polished Chrome extension bookmark manager inspired by Raindrop.io. Save, orga
 - Broken-link checker (opt-in from Settings / maintenance)
 - Auto-empty trash after N days (configurable)
 - Multi-window UI sync via `chrome.storage.onChanged`
-- **Google Drive sync** — bidirectional backup of bookmarks & collections (App Data folder)
+- **Google Drive sync** — bookmarks, collections & settings across devices (hidden App Data folder)
 - Dark / light / system theme
 - English + Tiếng Việt
 - List virtualization for large libraries
@@ -72,67 +72,60 @@ npm run build
 
 ## Google Drive sync setup
 
-Sync stores a private JSON file in Google Drive’s **Application Data** folder (hidden from the normal Drive UI).
+Sync stores one private JSON file (`bookmark-manager-sync-v2.json`) in Google Drive’s hidden **Application Data** folder. Only scope requested: `https://www.googleapis.com/auth/drive.appdata` (account email/name/photo come from `drive/v3/about`).
 
-| Browser | Auth API |
-|---------|----------|
-| **Google Chrome** | `chrome.identity.getAuthToken` (or web flow fallback) |
-| **Microsoft Edge** | `chrome.identity.launchWebAuthFlow` only — **getAuthToken is not supported** |
+Sign-in uses `chrome.identity.launchWebAuthFlow` with an OAuth client of type **Web application** — the same code path on Chrome, Edge, Brave, Opera and Vivaldi. `getAuthToken` is not used.
 
-### 1. Enable APIs & consent
+### 1. Google Cloud (same project as the existing client)
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a project (or pick an existing one)
-3. **APIs & Services → Library** → enable **Google Drive API**
-4. **OAuth consent screen** → External is fine; add your Google account as a **Test user** while in Testing
-
-### 2. Create OAuth client (pick one)
-
-#### A) Microsoft Edge (recommended: works on Edge + Chrome)
-
-1. **Credentials → Create credentials → OAuth client ID**
-2. Application type: **Web application**
-3. **Authorized redirect URIs** → add exactly (see Settings → Google Drive after load):
+1. **APIs & Services → Library** → enable **Google Drive API**
+2. **OAuth consent screen** → scopes: `drive.appdata` only; publish (**In production**) or add test users while in Testing
+3. **Credentials → OAuth client (Web application) → Authorized redirect URIs** → add one per extension ID:
 
    ```text
-   https://YOUR_EXTENSION_ID.chromiumapp.org/
+   https://<extension-id>.chromiumapp.org/
    ```
 
-   Extension ID is on `edge://extensions` / `chrome://extensions` (Developer mode). Trailing `/` matters — copy from the app’s **Redirect URI** line if unsure.
+   The dev build has a fixed ID thanks to `"key"` in `manifest.json`; the Store build gets the Store’s ID. Settings → Sync → **Advanced** shows the exact ID and redirect URI with copy buttons.
 
-4. Copy the client ID (`….apps.googleusercontent.com`)
+> appDataFolder belongs to the Cloud **project**, not to the client: a new client must be created in the same project or existing sync data will not be visible.
 
-#### B) Chrome only (optional)
-
-1. Application type: **Chrome Extension**
-2. Item ID = your extension ID  
-3. Works with `getAuthToken` on Chrome; **will fail on Edge**
-
-### 3. Configure the extension
+### 2. Build
 
 ```bash
-# .env (not committed)
+# optional — src/driveSync.ts has the project client ID built in
 VITE_GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com
-npm run build
+npm run build          # dist/ (unpacked, with "key" → stable dev ID)
+npm run build:store    # dist-store/ (same build, "key" removed for the Chrome Web Store)
+npm test               # merge / migration / engine tests (node --test)
 ```
 
-Reload the unpacked extension after build. If the extension ID changes (re-load unpacked), update the redirect URI / Item ID in Google Cloud.
+### 3. Behaviour
 
-### 4. Connect in the app
+Open the **full Dashboard** (the popup closes when the Google window opens) → **Settings → Sync → Connect**.
 
-Open the **full Dashboard** (not the tiny popup) → **Settings → Google Drive → Connect** → sign in → **Sync now**.
+- Per-record last-write-wins on `updatedAt`; ties broken by `deviceId` so every device picks the same winner
+- Deletions are tombstones kept for 180 days; a device offline longer than that cannot resurrect deleted bookmarks
+- Uploads only when Drive is missing something; checks `files.version` right before writing and re-merges (up to 3×) if another device wrote in between
+- Merged data is applied to this device record by record against the freshest local state, so bookmarks saved during a sync are kept
+- Duplicate URLs are collapsed (tags/notes/covers merged)
+- Roaming settings (theme, language, default view/sort/collection, previews, trash days, quick save, side panel) sync LWW; auto-sync on/off stays per device
+- Schedule: browser start, every 15 minutes, ~5 s after a change, and **Sync now**; network/429/5xx errors are retried with backoff; skipped while offline
+- A pre-merge backup of local data is kept (Settings → Sync → Advanced → Download backup); it can be re-imported via Import JSON
+- Corrupt or newer-schema files on Drive are never overwritten; local data stays as is
+- Upgrading from ≤ 1.2.0: the first sync reads the old `bookmark-manager-sync.json` (v1), merges it and writes the v2 file. The v1 file is left untouched
+- **Disconnect** revokes the token only; **Delete Drive data** (Advanced) removes the sync files and disconnects
 
-- Merge is last-write-wins per bookmark/collection (`updatedAt`)
-- Optional auto-sync every 30 minutes while the browser is running
-- On Edge, access tokens expire (~1h); the next **Sync now** / auto-sync re-auths (may need a click if the session expired)
-- **Disconnect** only revokes the local token; the Drive app-data file remains
+The sync core lives in `src/shared/driveSync/` and has no dependency on this app (shared verbatim with TubeDeck2k); the app-specific adapter is `src/sync/bookmarkSyncDoc.ts` + `src/driveSync.ts`.
 
 ## Project Structure
 
 ```
 src/
 ├── background.ts         # Service worker (CRUD, import, omnibox, commands, Drive sync)
-├── gdrive.ts             # Google Drive App Data API + merge
+├── driveSync.ts          # Drive sync wiring (auth config, adapter, status for UI)
+├── sync/bookmarkSyncDoc.ts  # Bookmarks ↔ sync document (v2), v1 migration, URL dedupe
+├── shared/driveSync/     # App-agnostic Drive sync core (auth, client, merge, engine, strings)
 ├── App.tsx               # Main UI (popup library + dashboard)
 ├── components/
 │   ├── QuickSave.tsx     # Compact popup save
