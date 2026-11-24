@@ -79,7 +79,7 @@ export interface AppSettings {
   trashAutoEmptyDays: number; // 0 = disabled
   openInSidePanel: boolean;
   showQuickSave: boolean;
-  /** Periodic Google Drive sync when connected */
+  /** Automatic Google Drive sync (startup, every 15 min, after changes). Per device. */
   gdriveAutoSync: boolean;
 }
 
@@ -132,7 +132,9 @@ export type Message =
   | { type: 'BM:gdriveStatus' }
   | { type: 'BM:gdriveConnect' }
   | { type: 'BM:gdriveDisconnect' }
-  | { type: 'BM:gdriveSync' };
+  | { type: 'BM:gdriveSync' }
+  | { type: 'BM:gdriveDeleteRemote' }
+  | { type: 'BM:gdriveGetBackup' };
 
 export interface AppState {
   bookmarks: Bookmark[];

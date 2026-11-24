@@ -1,9 +1,14 @@
 import {
-  saveBookmarks,
-  saveCollections,
-  saveSettings,
+  saveBookmarks as storeBookmarks,
+  saveCollections as storeCollections,
+  saveSettings as storeSettings,
+  saveTombstones,
+  saveSettingsMeta,
+  saveSyncOrigins,
   getInitialState,
-  recordTombstones,
+  loadSyncExtras,
+  pruneTombstones,
+  type SyncExtras,
 } from './storage';
 import {
   COLLECTION,
@@ -23,25 +28,49 @@ import {
   isSafeBookmarkUrl,
   sanitizeBookmarkUrl,
 } from './utils';
-import {
-  connectGDrive,
-  disconnectGDrive,
-  ensureGDriveAlarm,
-  getGDriveStatus,
-  GDRIVE_ALARM,
-  loadGDriveMeta,
-  syncWithGoogleDrive,
-} from './gdrive';
+import { createBookmarkDriveSync, getDeviceId } from './driveSync';
+import { pickSyncedSettings, type LocalSyncState } from './sync/bookmarkSyncDoc';
+import { deepEqual } from './shared/driveSync/merge';
+import { formatDriveError } from './shared/driveSync/strings';
+import type { DriveErrorInfo } from './shared/driveSync/types';
 
 // ─── In-Memory State Cache ──────────────────────────────────────────────────
 
 let stateCache: AppState | null = null;
+let extrasCache: SyncExtras | null = null;
+let cacheLoading: Promise<void> | null = null;
 
 async function ensureCache(): Promise<AppState> {
-  if (!stateCache) {
-    stateCache = await getInitialState();
+  if (!stateCache || !extrasCache) {
+    if (!cacheLoading) {
+      cacheLoading = (async () => {
+        const [state, extras] = await Promise.all([getInitialState(), loadSyncExtras()]);
+        stateCache ??= state;
+        extrasCache ??= extras;
+      })().finally(() => {
+        cacheLoading = null;
+      });
+    }
+    await cacheLoading;
   }
-  return stateCache;
+  return stateCache as AppState;
+}
+
+async function ensureExtras(): Promise<SyncExtras> {
+  await ensureCache();
+  return extrasCache as SyncExtras;
+}
+
+// Every user-facing write goes through these wrappers so Drive sync is scheduled
+// (debounced). The sync engine itself writes via the store* functions directly.
+async function saveBookmarks(bookmarks: Bookmark[]) {
+  await storeBookmarks(bookmarks);
+  drive.engine.notifyLocalChange();
+}
+
+async function saveCollections(collections: Collection[]) {
+  await storeCollections(collections);
+  drive.engine.notifyLocalChange();
 }
 
 async function persistBookmarks(bookmarks: Bookmark[]) {
@@ -49,14 +78,92 @@ async function persistBookmarks(bookmarks: Bookmark[]) {
   await saveBookmarks(bookmarks);
 }
 
-async function persistCollections(collections: Collection[]) {
-  if (stateCache) stateCache.collections = collections;
-  await saveCollections(collections);
+async function persistSettings(settings: AppSettings) {
+  const prev = stateCache?.settings;
+  if (stateCache) stateCache.settings = settings;
+  // Roaming settings changed → stamp them so Drive LWW picks the newest device's choice.
+  if (prev && !deepEqual(pickSyncedSettings(prev), pickSyncedSettings(settings))) {
+    const extras = await ensureExtras();
+    extras.settingsMeta = { updatedAt: Date.now(), deviceId: await getDeviceId() };
+    await saveSettingsMeta(extras.settingsMeta);
+    await storeSettings(settings);
+    drive.engine.notifyLocalChange();
+    return;
+  }
+  await storeSettings(settings);
 }
 
-async function persistSettings(settings: AppSettings) {
-  if (stateCache) stateCache.settings = settings;
-  await saveSettings(settings);
+/** Record deletions so the next Drive sync propagates them instead of resurrecting. */
+async function recordTombstones(kind: 'bookmarks' | 'collections', ids: string[], at = Date.now()) {
+  if (ids.length === 0) return;
+  const extras = await ensureExtras();
+  const next = { ...extras.tombstones, [kind]: { ...extras.tombstones[kind] } };
+  for (const id of ids) next[kind][id] = at;
+  extras.tombstones = pruneTombstones(next);
+  await saveTombstones(extras.tombstones);
+}
+
+// ─── Google Drive sync wiring ───────────────────────────────────────────────
+
+const drive = createBookmarkDriveSync({
+  async read(): Promise<LocalSyncState> {
+    const state = await ensureCache();
+    const extras = extrasCache as SyncExtras;
+    return {
+      bookmarks: state.bookmarks,
+      collections: state.collections,
+      settings: state.settings,
+      tombstones: extras.tombstones,
+      settingsMeta: extras.settingsMeta,
+      origins: extras.origins,
+    };
+  },
+  async transact(mutate) {
+    const state = await ensureCache();
+    const extras = extrasCache as SyncExtras;
+    // No await between reading the cache and committing `next` — UI handlers that run
+    // while a sync is in flight can't be overwritten by a stale snapshot.
+    const next = mutate({
+      bookmarks: state.bookmarks,
+      collections: state.collections,
+      settings: state.settings,
+      tombstones: extras.tombstones,
+      settingsMeta: extras.settingsMeta,
+      origins: extras.origins,
+    });
+    if (!next) return;
+    const bookmarksChanged = next.bookmarks !== state.bookmarks && !deepEqual(next.bookmarks, state.bookmarks);
+    const collectionsChanged =
+      next.collections !== state.collections && !deepEqual(next.collections, state.collections);
+    const settingsChanged = !deepEqual(next.settings, state.settings);
+    state.bookmarks = next.bookmarks;
+    state.collections = next.collections;
+    state.settings = next.settings;
+    extras.tombstones = next.tombstones;
+    extras.settingsMeta = next.settingsMeta;
+    extras.origins = next.origins;
+    await Promise.all([
+      bookmarksChanged ? storeBookmarks(next.bookmarks) : undefined,
+      collectionsChanged ? storeCollections(next.collections) : undefined,
+      settingsChanged ? storeSettings(next.settings) : undefined,
+      saveTombstones(next.tombstones),
+      saveSettingsMeta(next.settingsMeta),
+      saveSyncOrigins(next.origins),
+    ]);
+  },
+  async isAutoSyncEnabled() {
+    const state = await ensureCache();
+    return state.settings.gdriveAutoSync !== false;
+  },
+});
+
+function driveErrorText(info: DriveErrorInfo | null | undefined, locale: AppSettings['locale']): string {
+  if (!info) return '';
+  const text = formatDriveError(info, locale === 'vi' ? 'vi' : 'en', {
+    redirectUri: chrome.identity?.getRedirectURL?.() ?? '',
+    extensionId: chrome.runtime.id,
+  });
+  return text.title;
 }
 
 // ─── Cached CRUD helpers ────────────────────────────────────────────────────
@@ -319,47 +426,20 @@ function createContextMenus() {
   });
 }
 
-async function initGDriveAutoSync() {
-  const meta = await loadGDriveMeta();
-  const state = await ensureCache();
-  const enabled = meta.connected && state.settings.gdriveAutoSync !== false && meta.autoSync;
-  await ensureGDriveAlarm(enabled);
-}
-
 chrome.runtime.onInstalled.addListener(() => {
   createContextMenus();
   void emptyOldTrashIfNeeded().catch(() => undefined);
-  void initGDriveAutoSync().catch(() => undefined);
+  void drive.ready.then(() => drive.engine.refreshSchedule()).catch(() => undefined);
 });
-
-/** Quiet (non-interactive) pull+push used by startup and the periodic alarm. */
-async function runQuietAutoSync(): Promise<void> {
-  try {
-    const meta = await loadGDriveMeta();
-    if (!meta.connected || meta.autoSync === false) return;
-    const state = await ensureCache();
-    if (state.settings.gdriveAutoSync === false) return;
-    const synced = await syncWithGoogleDrive(state, { interactive: false });
-    if (synced.result.ok) {
-      await persistBookmarks(synced.bookmarks);
-      await persistCollections(synced.collections);
-      await persistSettings(synced.settings);
-    }
-  } catch (err) {
-    console.debug('Quiet auto-sync failed', err);
-  }
-}
 
 chrome.runtime.onStartup.addListener(() => {
   createContextMenus();
   void emptyOldTrashIfNeeded().catch(() => undefined);
-  void initGDriveAutoSync().catch(() => undefined);
-  void runQuietAutoSync();
+  void drive.ready.then(() => drive.engine.handleStartup()).catch(() => undefined);
 });
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
-  if (alarm.name !== GDRIVE_ALARM) return;
-  void runQuietAutoSync();
+  void drive.ready.then(() => drive.engine.handleAlarm(alarm.name)).catch(() => undefined);
 });
 
 async function emptyOldTrashIfNeeded() {
@@ -671,88 +751,51 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const next = { ...state.settings, ...message.payload } as AppSettings;
           await persistSettings(next);
           if (message.payload && 'gdriveAutoSync' in message.payload) {
-            const meta = await loadGDriveMeta();
-            await ensureGDriveAlarm(
-              meta.connected && next.gdriveAutoSync !== false
-            );
+            await drive.engine.refreshSchedule();
           }
           sendResponse(await getState());
           break;
         }
 
         case 'BM:gdriveStatus': {
-          sendResponse(await getGDriveStatus());
+          sendResponse(await drive.getStatus());
           break;
         }
 
-        case 'BM:gdriveConnect': {
-          try {
-            const meta = await connectGDrive();
-            const state = await ensureCache();
-            // First connect: merge remote + local and upload
-            const synced = await syncWithGoogleDrive(state);
-            if (synced.result.ok) {
-              await persistBookmarks(synced.bookmarks);
-              await persistCollections(synced.collections);
-              await persistSettings(synced.settings);
-              await ensureGDriveAlarm(synced.settings.gdriveAutoSync !== false);
-              sendResponse({
-                ...(await getState()),
-                gdrive: await getGDriveStatus(),
-                gdriveSync: synced.result,
-              });
-            } else {
-              await ensureGDriveAlarm(meta.autoSync !== false);
-              sendResponse({
-                ...(await getState()),
-                gdrive: await getGDriveStatus(),
-                error: synced.result.error || 'Sync failed after connect',
-              });
-            }
-          } catch (err) {
-            sendResponse({ error: err instanceof Error ? err.message : String(err) });
-          }
+        case 'BM:gdriveConnect':
+        case 'BM:gdriveSync':
+        case 'BM:gdriveDeleteRemote': {
+          await drive.ready;
+          const outcome =
+            message.type === 'BM:gdriveConnect'
+              ? await drive.engine.signIn()
+              : message.type === 'BM:gdriveSync'
+                ? await drive.engine.sync({ manual: true })
+                : await drive.engine.deleteRemoteData();
+          const state = await getState();
+          const gdrive = await drive.getStatus();
+          sendResponse({
+            ...state,
+            gdrive,
+            ...(outcome.ok
+              ? {}
+              : {
+                  error:
+                    driveErrorText(outcome.error ?? gdrive.lastError, state.settings.locale) ||
+                    (gdrive.connected ? 'Sync failed' : 'Not connected'),
+                }),
+          });
           break;
         }
 
         case 'BM:gdriveDisconnect': {
-          try {
-            await disconnectGDrive();
-            await ensureGDriveAlarm(false);
-            sendResponse({
-              ...(await getState()),
-              gdrive: await getGDriveStatus(),
-            });
-          } catch (err) {
-            sendResponse({ error: err instanceof Error ? err.message : String(err) });
-          }
+          await drive.engine.signOut();
+          sendResponse({ ...(await getState()), gdrive: await drive.getStatus() });
           break;
         }
 
-        case 'BM:gdriveSync': {
-          try {
-            const state = await ensureCache();
-            const synced = await syncWithGoogleDrive(state);
-            if (synced.result.ok) {
-              await persistBookmarks(synced.bookmarks);
-              await persistCollections(synced.collections);
-              await persistSettings(synced.settings);
-              await ensureGDriveAlarm(synced.settings.gdriveAutoSync !== false);
-              sendResponse({
-                ...(await getState()),
-                gdrive: await getGDriveStatus(),
-                gdriveSync: synced.result,
-              });
-            } else {
-              sendResponse({
-                ...(await getState()),
-                gdrive: await getGDriveStatus(),
-                error: synced.result.error || 'Sync failed',
-              });
-            }
-          } catch (err) {
-            sendResponse({ error: err instanceof Error ? err.message : String(err) });
-          }
+        case 'BM:gdriveGetBackup': {
+          sendResponse({ backup: await drive.getBackup() });
           break;
         }
 

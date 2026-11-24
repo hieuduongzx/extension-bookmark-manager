@@ -35,7 +35,7 @@ import { COLLECTION, SMART } from '../types';
 import { buildCollectionTree, flattenCollectionTree } from '../utils';
 import { createT } from '../i18n';
 import { useEscapeKey } from '../hooks';
-import type { GDriveUiStatus } from '../gdrive';
+import type { GDriveUiStatus } from '../driveSync';
 import { getCollectionColorText, getCollectionIcon } from '../collectionIcons';
 
 interface SidebarProps {
@@ -1003,8 +1003,10 @@ export function Sidebar({
           <span className="truncate">{t('settings')}</span>
           {gdrive?.connected && (
             <span
-              className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"
-              title={t('gdriveStatusSynced')}
+              className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${
+                gdrive.needsReauth ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}
+              title={gdrive.needsReauth ? t('gdriveStatusNeedsReauth') : t('gdriveStatusSynced')}
             />
           )}
         </button>
@@ -1052,7 +1054,9 @@ export function Sidebar({
                     <span className="block text-[11px] leading-snug text-zinc-400 truncate">
                       {gdrive?.busy
                         ? t('gdriveSyncing')
-                        : gdrive?.connected
+                        : gdrive?.needsReauth
+                          ? t('gdriveStatusNeedsReauth')
+                          : gdrive?.connected
                           ? gdrive.email
                             ? `${t('gdriveConnectedAs')} ${gdrive.email}`
                             : t('gdriveStatusSynced')
@@ -1060,7 +1064,11 @@ export function Sidebar({
                     </span>
                   </div>
                   <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 shrink-0">
-                    {gdrive?.connected ? t('gdriveMenuSync') : t('gdriveMenuConnect')}
+                    {gdrive?.needsReauth
+                      ? t('gdriveReconnect')
+                      : gdrive?.connected
+                        ? t('gdriveMenuSync')
+                        : t('gdriveMenuConnect')}
                   </span>
                 </button>
                 {onOpenPreferences && (

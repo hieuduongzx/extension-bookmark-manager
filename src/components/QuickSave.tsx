@@ -29,7 +29,7 @@ import {
 } from '../utils';
 import { createT } from '../i18n';
 import { Dropdown } from './Dropdown';
-import type { GDriveUiStatus } from '../gdrive';
+import type { GDriveUiStatus } from '../driveSync';
 
 interface QuickSaveProps {
   bookmarks: Bookmark[];
@@ -343,14 +343,16 @@ export function QuickSave({
                   : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
               }`}
               title={
-                gdrive?.connected
+                gdrive?.needsReauth
+                  ? t('gdriveStatusNeedsReauth')
+                  : gdrive?.connected
                   ? `${t('gdriveMenuSync')}${gdrive.email ? ` · ${gdrive.email}` : ''}`
                   : t('gdriveMenuTitle')
               }
               aria-label={t('gdriveMenuTitle')}
             >
               {gdrive?.connected ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
-              {!gdrive?.connected && (
+              {(!gdrive?.connected || gdrive?.needsReauth) && (
                 <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
               )}
             </button>

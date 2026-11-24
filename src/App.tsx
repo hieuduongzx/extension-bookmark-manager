@@ -55,7 +55,7 @@ import {
 import { useDebouncedValue, useToastQueue } from './hooks';
 import { createT, setLocale } from './i18n';
 import { STORAGE_KEYS } from './storage';
-import type { GDriveStatus, GDriveUiStatus } from './gdrive';
+import type { GDriveStatus, GDriveUiStatus } from './driveSync';
 
 const AddBookmarkModal = lazy(() =>
   import('./components/AddBookmarkModal').then((m) => ({ default: m.AddBookmarkModal }))
@@ -267,6 +267,12 @@ function App() {
   useEffect(() => {
     if (!isLoaded) return;
     refreshGDriveStatus();
+    // Background auto-sync updates this key; keep sidebar / popup status live.
+    const onDriveChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
+      if (area === 'local' && changes.bm_drive_state) refreshGDriveStatus();
+    };
+    chrome.storage.onChanged.addListener(onDriveChanged);
+    return () => chrome.storage.onChanged.removeListener(onDriveChanged);
   }, [isLoaded, refreshGDriveStatus]);
 
   const gdriveUi: GDriveUiStatus | null = useMemo(() => {
@@ -275,9 +281,10 @@ function App() {
     }
     return {
       connected: gdriveStatus.connected,
+      needsReauth: gdriveStatus.needsReauth,
       email: gdriveStatus.email,
       lastSyncAt: gdriveStatus.lastSyncAt,
-      busy: gdriveBusy,
+      busy: gdriveBusy || gdriveStatus.syncing,
     };
   }, [gdriveStatus, gdriveBusy]);
 
@@ -330,7 +337,7 @@ function App() {
   }, [isDashboard]);
 
   const handleSyncGDrive = useCallback(async () => {
-    if (!gdriveStatus?.connected) {
+    if (!gdriveStatus?.connected || gdriveStatus.needsReauth) {
       openGDriveSettings();
       return;
     }
@@ -359,7 +366,7 @@ function App() {
     } finally {
       setGdriveBusy(false);
     }
-  }, [gdriveStatus?.connected, openGDriveSettings, refreshGDriveStatus, send, showToast, t]);
+  }, [gdriveStatus?.connected, gdriveStatus?.needsReauth, openGDriveSettings, refreshGDriveStatus, send, showToast, t]);
 
   const [currentTabBookmark, setCurrentTabBookmark] = useState<Bookmark | null>(null);
 

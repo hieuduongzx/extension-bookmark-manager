@@ -101,7 +101,8 @@ const en = {
   confirmDeleteCollection:
     'Delete this collection and its sub-collections? Bookmarks will be moved to Unsorted.',
   gdriveSection: 'Google Drive',
-  gdriveDesc: 'Backup bookmarks to Google Drive',
+  gdriveDesc:
+    'Bookmarks, collections and settings are kept in a hidden app folder of your Google Drive (only this extension can see it).',
   gdriveConnect: 'Connect',
   gdriveDisconnect: 'Disconnect',
   gdriveSyncNow: 'Sync now',
@@ -110,7 +111,7 @@ const en = {
   gdriveNotConfigured: 'OAuth not configured — set VITE_GOOGLE_CLIENT_ID and rebuild.',
   gdriveLastSync: 'Last sync',
   gdriveNever: 'Never',
-  gdriveAutoSync: 'Auto-sync every 30 minutes',
+  gdriveAutoSync: 'Auto-sync (on startup, every 15 minutes and after changes)',
   gdriveSyncing: 'Syncing…',
   gdriveConnecting: 'Connecting…',
   gdriveSyncSuccess: 'Synced with Google Drive',
@@ -127,6 +128,22 @@ const en = {
   gdriveStatusSynced: 'Synced',
   gdriveStatusOffline: 'Not connected',
   gdriveStatusPending: 'Tap to set up',
+  gdriveStatusNeedsReauth: 'Sign-in expired',
+  gdriveStatusError: 'Sync error',
+  gdriveStatusIdle: 'Connected',
+  gdriveReconnect: 'Sign in again',
+  gdriveAdvanced: 'Advanced',
+  gdriveBackupTitle: 'Pre-merge backup',
+  gdriveBackupDesc:
+    'Local data saved right before the last sync changed this device. Restore it via Data → Import JSON.',
+  gdriveBackupDownload: 'Download backup',
+  gdriveBackupNone: 'No backup yet',
+  gdriveDeleteRemote: 'Delete Drive data',
+  gdriveDeleteRemoteDesc:
+    'Removes the sync file from your Google Drive and disconnects this device. Data on this device is kept.',
+  gdriveDeleteRemoteConfirm:
+    'Delete all Bookmark Manager data stored in your Google Drive? Bookmarks on this device are not affected. Other devices that are still connected will upload their data again on their next sync.',
+  gdriveDeleteRemoteDone: 'Drive data deleted',
   newCollection: 'New collection',
   newCollectionPlaceholder: 'Collection name…',
   addBookmark: 'Add Bookmark',
@@ -365,7 +382,8 @@ const vi: Record<TranslationKey, string> = {
   confirmDeleteCollection:
     'Xóa collection và các collection con? Bookmark sẽ chuyển về Chưa phân loại.',
   gdriveSection: 'Google Drive',
-  gdriveDesc: 'Sao lưu bookmark lên Google Drive',
+  gdriveDesc:
+    'Bookmark, bộ sưu tập và cài đặt được lưu trong thư mục ứng dụng ẩn trên Google Drive của bạn (chỉ tiện ích này thấy).',
   gdriveConnect: 'Kết nối',
   gdriveDisconnect: 'Ngắt kết nối',
   gdriveSyncNow: 'Đồng bộ ngay',
@@ -374,7 +392,7 @@ const vi: Record<TranslationKey, string> = {
   gdriveNotConfigured: 'Chưa cấu hình OAuth — đặt VITE_GOOGLE_CLIENT_ID rồi build lại.',
   gdriveLastSync: 'Lần đồng bộ cuối',
   gdriveNever: 'Chưa bao giờ',
-  gdriveAutoSync: 'Tự đồng bộ mỗi 30 phút',
+  gdriveAutoSync: 'Tự đồng bộ (khi mở trình duyệt, mỗi 15 phút và sau khi có thay đổi)',
   gdriveSyncing: 'Đang đồng bộ…',
   gdriveConnecting: 'Đang kết nối…',
   gdriveSyncSuccess: 'Đã đồng bộ với Google Drive',
@@ -391,6 +409,22 @@ const vi: Record<TranslationKey, string> = {
   gdriveStatusSynced: 'Đã đồng bộ',
   gdriveStatusOffline: 'Chưa kết nối',
   gdriveStatusPending: 'Bấm để thiết lập',
+  gdriveStatusNeedsReauth: 'Cần đăng nhập lại',
+  gdriveStatusError: 'Lỗi đồng bộ',
+  gdriveStatusIdle: 'Đã kết nối',
+  gdriveReconnect: 'Đăng nhập lại',
+  gdriveAdvanced: 'Nâng cao',
+  gdriveBackupTitle: 'Bản sao lưu trước khi gộp',
+  gdriveBackupDesc:
+    'Dữ liệu trên máy được lưu ngay trước lần đồng bộ gần nhất làm thay đổi máy này. Khôi phục bằng Dữ liệu → Nhập JSON.',
+  gdriveBackupDownload: 'Tải bản sao lưu',
+  gdriveBackupNone: 'Chưa có bản sao lưu',
+  gdriveDeleteRemote: 'Xoá dữ liệu trên Drive',
+  gdriveDeleteRemoteDesc:
+    'Xoá file đồng bộ khỏi Google Drive và ngắt kết nối máy này. Dữ liệu trên máy vẫn giữ nguyên.',
+  gdriveDeleteRemoteConfirm:
+    'Xoá toàn bộ dữ liệu Bookmark Manager lưu trên Google Drive? Bookmark trên máy này không bị ảnh hưởng. Các máy khác còn kết nối sẽ tải dữ liệu của chúng lên lại ở lần đồng bộ sau.',
+  gdriveDeleteRemoteDone: 'Đã xoá dữ liệu trên Drive',
   newCollection: 'Collection mới',
   newCollectionPlaceholder: 'Tên collection…',
   addBookmark: 'Thêm bookmark',

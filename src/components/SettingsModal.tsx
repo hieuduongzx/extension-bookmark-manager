@@ -27,7 +27,13 @@ import { COLLECTION } from '../types';
 import { createT } from '../i18n';
 import { useEscapeKey, useFocusTrap } from '../hooks';
 import { Dropdown } from './Dropdown';
-import type { GDriveStatus } from '../gdrive';
+import type { DriveBackup, GDriveStatus } from '../driveSync';
+import {
+  formatAbsoluteTime,
+  formatDriveError,
+  formatRelativeTime,
+} from '../shared/driveSync/strings';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export interface LibraryStats {
   totalBookmarks: number;
@@ -58,18 +64,6 @@ interface SettingsModalProps {
 
 type TabId = 'general' | 'sync' | 'data' | 'shortcuts';
 
-function formatSyncTime(ts: number | null, neverLabel: string, locale: LocaleCode): string {
-  if (!ts) return neverLabel;
-  try {
-    return new Date(ts).toLocaleString(locale === 'vi' ? 'vi-VN' : 'en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-  } catch {
-    return new Date(ts).toLocaleString();
-  }
-}
-
 export function SettingsModal({
   settings,
   collections,
@@ -94,8 +88,13 @@ export function SettingsModal({
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>(autoConnectGDrive ? 'sync' : 'general');
   const [gdrive, setGdrive] = useState<GDriveStatus | null>(null);
-  const [gdriveBusy, setGdriveBusy] = useState<'connect' | 'sync' | 'disconnect' | null>(null);
+  const [gdriveBusy, setGdriveBusy] = useState<
+    'connect' | 'sync' | 'disconnect' | 'delete' | 'backup' | null
+  >(null);
+  /** Transport-level error (messaging failed); Drive errors come from gdrive.lastError */
   const [gdriveError, setGdriveError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [, setClock] = useState(0);
   const containerRef = useFocusTrap<HTMLDivElement>(true);
   useEscapeKey(onClose);
 
@@ -122,12 +121,22 @@ export function SettingsModal({
         return;
       }
       setGdrive(response as GDriveStatus);
-      setGdriveError((response as GDriveStatus)?.lastError ?? null);
+      setGdriveError(null);
     });
   }, []);
 
   useEffect(() => {
     refreshGDrive();
+    // Live status while a background sync runs, and a ticking "x minutes ago".
+    const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
+      if (area === 'local' && changes.bm_drive_state) refreshGDrive();
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    const timer = window.setInterval(() => setClock((n) => n + 1), 30_000);
+    return () => {
+      chrome.storage.onChanged.removeListener(onChanged);
+      window.clearInterval(timer);
+    };
   }, [refreshGDrive]);
 
   const handleSave = async () => {
@@ -140,7 +149,9 @@ export function SettingsModal({
     }
   };
 
-  const sendGDrive = (msg: Message): Promise<{ error?: string; gdrive?: GDriveStatus }> =>
+  const sendGDrive = (
+    msg: Message
+  ): Promise<{ error?: string; gdrive?: GDriveStatus; backup?: DriveBackup | null }> =>
     new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(msg, (response) => {
         if (chrome.runtime.lastError) {
@@ -151,12 +162,34 @@ export function SettingsModal({
       });
     });
 
-  const failGDrive = (message: string) => {
-    setGdriveError(message);
-    onToast?.(message.split('\n')[0] || t('gdriveSyncFailed'));
+  const runGDrive = async (
+    kind: 'connect' | 'sync' | 'disconnect' | 'delete',
+    msg: Message,
+    successToast: string
+  ) => {
+    setGdriveBusy(kind);
+    setGdriveError(null);
+    try {
+      const res = await sendGDrive(msg);
+      if (res.gdrive) setGdrive(res.gdrive);
+      else refreshGDrive();
+      if (res.error) {
+        onToast?.(res.error.split('\n')[0] || t('gdriveSyncFailed'));
+      } else {
+        onToast?.(successToast);
+        onGDriveStateChange?.();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setGdriveError(message);
+      onToast?.(message.split('\n')[0] || t('gdriveSyncFailed'));
+    } finally {
+      setGdriveBusy(null);
+    }
   };
 
   const handleConnect = async () => {
+    // The OAuth window closes the popup, so sign in from the full Dashboard tab.
     const isPopup = !window.location.search.includes('target=dashboard');
     if (isPopup) {
       const url = chrome.runtime.getURL('index.html?target=dashboard&gdrive=connect');
@@ -164,64 +197,81 @@ export function SettingsModal({
       onClose();
       return;
     }
+    await runGDrive('connect', { type: 'BM:gdriveConnect' }, t('gdriveConnectSuccess'));
+  };
 
-    setGdriveBusy('connect');
-    setGdriveError(null);
+  const handleSync = () => runGDrive('sync', { type: 'BM:gdriveSync' }, t('gdriveSyncSuccess'));
+  const handleDisconnect = () =>
+    runGDrive('disconnect', { type: 'BM:gdriveDisconnect' }, t('gdriveDisconnected'));
+  const handleDeleteRemote = () =>
+    runGDrive('delete', { type: 'BM:gdriveDeleteRemote' }, t('gdriveDeleteRemoteDone'));
+
+  const handleDownloadBackup = async () => {
+    setGdriveBusy('backup');
+    let url: string | null = null;
     try {
-      const res = await sendGDrive({ type: 'BM:gdriveConnect' });
-      if (res.error) {
-        failGDrive(res.error);
-      } else {
-        onToast?.(t('gdriveConnectSuccess'));
-        onGDriveStateChange?.();
+      const res = await sendGDrive({ type: 'BM:gdriveGetBackup' });
+      if (!res.backup) {
+        onToast?.(t('gdriveBackupNone'));
+        return;
       }
-      if (res.gdrive) setGdrive(res.gdrive);
-      else refreshGDrive();
+      const blob = new Blob([JSON.stringify(res.backup, null, 2)], { type: 'application/json' });
+      url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bookmark-manager-drive-backup-${new Date(res.backup.savedAt)
+        .toISOString()
+        .slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     } catch (err) {
-      failGDrive(err instanceof Error ? err.message : String(err));
+      onToast?.(err instanceof Error ? err.message : String(err));
     } finally {
+      if (url) URL.revokeObjectURL(url);
       setGdriveBusy(null);
     }
   };
 
-  const handleSync = async () => {
-    setGdriveBusy('sync');
-    setGdriveError(null);
-    try {
-      const res = await sendGDrive({ type: 'BM:gdriveSync' });
-      if (res.error) {
-        failGDrive(res.error);
-      } else {
-        onToast?.(t('gdriveSyncSuccess'));
-        onGDriveStateChange?.();
-      }
-      if (res.gdrive) setGdrive(res.gdrive);
-      else refreshGDrive();
-    } catch (err) {
-      failGDrive(err instanceof Error ? err.message : String(err));
-    } finally {
-      setGdriveBusy(null);
+  const driveLocale = draft.locale === 'vi' ? 'vi' : 'en';
+  const driveErr =
+    gdrive?.lastError && (gdrive.status === 'error' || gdrive.status === 'needs_reauth')
+      ? formatDriveError(gdrive.lastError, driveLocale, {
+          redirectUri: gdrive.redirectUri,
+          extensionId: gdrive.extensionId,
+        })
+      : null;
+  const statusChip = (() => {
+    if (!gdrive?.connected) return null;
+    if (gdrive.syncing || gdriveBusy === 'sync' || gdriveBusy === 'connect') {
+      return {
+        label: t('gdriveSyncing'),
+        cls: 'bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300',
+      };
     }
-  };
-
-  const handleDisconnect = async () => {
-    setGdriveBusy('disconnect');
-    setGdriveError(null);
-    try {
-      const res = await sendGDrive({ type: 'BM:gdriveDisconnect' });
-      if (res.error) {
-        setGdriveError(res.error);
-      } else {
-        onToast?.(t('gdriveDisconnected'));
-      }
-      if (res.gdrive) setGdrive(res.gdrive);
-      else refreshGDrive();
-    } catch (err) {
-      setGdriveError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setGdriveBusy(null);
+    switch (gdrive.status) {
+      case 'needs_reauth':
+        return {
+          label: t('gdriveStatusNeedsReauth'),
+          cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+        };
+      case 'error':
+        return {
+          label: t('gdriveStatusError'),
+          cls: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+        };
+      case 'synced':
+        return {
+          label: t('gdriveStatusSynced'),
+          cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+        };
+      default:
+        return {
+          label: t('gdriveStatusIdle'),
+          cls: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+        };
     }
-  };
+  })();
 
   const busy = gdriveBusy !== null;
 
@@ -432,59 +482,73 @@ export function SettingsModal({
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  {gdrive?.connected ? (
+                  {gdrive?.connected && gdrive.account?.photoUrl ? (
+                    <img
+                      src={gdrive.account.photoUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="w-8 h-8 rounded-full shrink-0 bg-zinc-200 dark:bg-zinc-700"
+                    />
+                  ) : gdrive?.connected ? (
                     <Cloud className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
                   ) : (
                     <CloudOff className="w-4 h-4 text-zinc-400 shrink-0" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-[12.5px] font-semibold text-zinc-800 dark:text-zinc-100 truncate">
-                      {gdrive?.connected ? gdrive.email || 'Google' : t('gdriveNotConnected')}
+                      {gdrive?.connected
+                        ? gdrive.account?.email || gdrive.account?.displayName || 'Google'
+                        : t('gdriveNotConnected')}
                     </p>
                     {gdrive?.connected && (
                       <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
                         {t('gdriveLastSync')}:{' '}
-                        {formatSyncTime(gdrive.lastSyncAt, t('gdriveNever'), draft.locale)}
+                        {gdrive.lastSyncAt ? (
+                          <time
+                            dateTime={new Date(gdrive.lastSyncAt).toISOString()}
+                            title={formatAbsoluteTime(gdrive.lastSyncAt, driveLocale)}
+                            className="cursor-help underline decoration-dotted underline-offset-2"
+                          >
+                            {formatRelativeTime(gdrive.lastSyncAt, driveLocale)}
+                          </time>
+                        ) : (
+                          t('gdriveNever')
+                        )}
                       </p>
                     )}
                   </div>
+                  {statusChip && (
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${statusChip.cls}`}
+                      role="status"
+                    >
+                      {statusChip.label}
+                    </span>
+                  )}
                 </div>
 
-                {gdriveError && (
-                  <p
-                    className="text-[11px] text-rose-600 dark:text-rose-400 break-words whitespace-pre-wrap"
+                {(driveErr || gdriveError) && (
+                  <div
+                    className={`rounded-lg px-2.5 py-2 text-[11px] break-words whitespace-pre-wrap ${
+                      gdrive?.status === 'needs_reauth'
+                        ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200'
+                        : 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300'
+                    }`}
                     role="alert"
                   >
-                    {gdriveError}
-                  </p>
-                )}
-
-                {(!gdrive?.connected || gdriveError) && gdrive?.redirectUri && (
-                  <details className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    <summary className="cursor-pointer select-none hover:text-zinc-700 dark:hover:text-zinc-200">
-                      {t('gdriveSetupDetails')}
-                    </summary>
-                    <div className="mt-1.5 space-y-1.5 pl-0.5">
-                      {gdrive.extensionId && (
-                        <CopyRow
-                          label={t('extensionId')}
-                          value={gdrive.extensionId}
-                          copyLabel={t('copy')}
-                          copiedLabel={t('copied')}
-                        />
-                      )}
-                      <CopyRow
-                        label={t('redirectUri')}
-                        value={gdrive.redirectUri}
-                        copyLabel={t('copy')}
-                        copiedLabel={t('copied')}
-                      />
-                    </div>
-                  </details>
+                    {driveErr ? (
+                      <>
+                        <p className="font-semibold">{driveErr.title}</p>
+                        {driveErr.hint && <p className="mt-0.5 opacity-90">{driveErr.hint}</p>}
+                      </>
+                    ) : (
+                      gdriveError
+                    )}
+                  </div>
                 )}
 
                 <div className="flex flex-wrap gap-1.5">
-                  {!gdrive?.connected ? (
+                  {!gdrive?.connected || gdrive.needsReauth ? (
                     <button
                       type="button"
                       disabled={busy || gdrive?.configured === false}
@@ -496,35 +560,37 @@ export function SettingsModal({
                       ) : (
                         <Cloud className="w-3.5 h-3.5" />
                       )}
-                      {gdriveBusy === 'connect' ? t('gdriveConnecting') : t('gdriveConnect')}
+                      {gdriveBusy === 'connect'
+                        ? t('gdriveConnecting')
+                        : gdrive?.needsReauth
+                          ? t('gdriveReconnect')
+                          : t('gdriveConnect')}
                     </button>
                   ) : (
-                    <>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={handleSync}
-                        className="btn-brand-sm inline-flex items-center gap-1.5 disabled:opacity-50"
-                      >
-                        {gdriveBusy === 'sync' ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-3.5 h-3.5" />
-                        )}
-                        {gdriveBusy === 'sync' ? t('gdriveSyncing') : t('gdriveSyncNow')}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={handleDisconnect}
-                        className="btn-ghost-sm inline-flex items-center gap-1.5 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 disabled:opacity-50"
-                      >
-                        {gdriveBusy === 'disconnect' ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : null}
-                        {t('gdriveDisconnect')}
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      disabled={busy || gdrive.syncing}
+                      onClick={handleSync}
+                      className="btn-brand-sm inline-flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {gdriveBusy === 'sync' || gdrive.syncing ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      {gdriveBusy === 'sync' || gdrive.syncing ? t('gdriveSyncing') : t('gdriveSyncNow')}
+                    </button>
+                  )}
+                  {gdrive?.connected && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={handleDisconnect}
+                      className="btn-ghost-sm inline-flex items-center gap-1.5 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 disabled:opacity-50"
+                    >
+                      {gdriveBusy === 'disconnect' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      {t('gdriveDisconnect')}
+                    </button>
                   )}
                 </div>
               </div>
@@ -535,6 +601,91 @@ export function SettingsModal({
                 label={t('gdriveAutoSync')}
               />
               <p className="text-[11px] text-zinc-400">{t('gdriveDesc')}</p>
+
+              {gdrive && (
+                <details
+                  className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3.5 py-2.5 text-[11px] text-zinc-500 dark:text-zinc-400"
+                  open={Boolean(driveErr && gdrive.lastError?.code !== 'needs_reauth') || undefined}
+                >
+                  <summary className="cursor-pointer select-none font-semibold text-zinc-600 dark:text-zinc-300 hover:text-zinc-800 dark:hover:text-zinc-100">
+                    {t('gdriveAdvanced')}
+                  </summary>
+                  <div className="mt-2.5 space-y-3">
+                    <div className="space-y-1.5">
+                      <CopyRow
+                        label={t('extensionId')}
+                        value={gdrive.extensionId}
+                        copyLabel={t('copy')}
+                        copiedLabel={t('copied')}
+                      />
+                      <CopyRow
+                        label={t('redirectUri')}
+                        value={gdrive.redirectUri}
+                        copyLabel={t('copy')}
+                        copiedLabel={t('copied')}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="font-semibold text-zinc-700 dark:text-zinc-200">
+                        {t('gdriveBackupTitle')}
+                      </p>
+                      <p>{t('gdriveBackupDesc')}</p>
+                      <button
+                        type="button"
+                        disabled={busy || !gdrive.backupAt}
+                        onClick={handleDownloadBackup}
+                        className="btn-ghost-sm inline-flex items-center gap-1.5 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 disabled:opacity-50"
+                      >
+                        {gdriveBusy === 'backup' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        {gdrive.backupAt
+                          ? `${t('gdriveBackupDownload')} · ${formatAbsoluteTime(gdrive.backupAt, driveLocale)}`
+                          : t('gdriveBackupNone')}
+                      </button>
+                    </div>
+
+                    {gdrive.connected && (
+                      <div className="space-y-1">
+                        <p className="font-semibold text-rose-700 dark:text-rose-300">
+                          {t('gdriveDeleteRemote')}
+                        </p>
+                        <p>{t('gdriveDeleteRemoteDesc')}</p>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setConfirmDelete(true)}
+                          className="btn-ghost-sm inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400 dark:bg-zinc-800 dark:border-zinc-700 disabled:opacity-50"
+                        >
+                          {gdriveBusy === 'delete' ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                          {t('gdriveDeleteRemote')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+
+              {confirmDelete && (
+                <ConfirmDialog
+                  locale={draft.locale}
+                  onClose={() => setConfirmDelete(false)}
+                  dialog={{
+                    title: t('gdriveDeleteRemote'),
+                    message: t('gdriveDeleteRemoteConfirm'),
+                    confirmLabel: t('gdriveDeleteRemote'),
+                    variant: 'danger',
+                    onConfirm: handleDeleteRemote,
+                  }}
+                />
+              )}
             </section>
           )}
 
