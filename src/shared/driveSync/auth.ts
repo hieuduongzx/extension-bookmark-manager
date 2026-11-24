@@ -19,6 +19,8 @@ export interface AuthConfig {
   scopes: string[];
   /** chrome.storage.local key for the cached token */
   tokenStorageKey: string;
+  /** chrome.storage.local key for the signed-in account email (login_hint). Default: `${tokenStorageKey}_login_hint` */
+  loginHintStorageKey?: string;
 }
 
 export interface StoredToken {
@@ -45,7 +47,18 @@ export function getRedirectUri(): string {
   }
 }
 
-export function buildAuthUrl(cfg: AuthConfig, interactive: boolean, redirectUri: string): string {
+/**
+ * Build the Google OAuth URL.
+ * `loginHint` (the Drive account email) matters for silent refresh: with several Google
+ * accounts signed in to the browser, prompt=none without a hint makes Google answer
+ * `interaction_required` because it cannot pick an account by itself.
+ */
+export function buildAuthUrl(
+  cfg: AuthConfig,
+  interactive: boolean,
+  redirectUri: string,
+  loginHint?: string | null
+): string {
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', cfg.clientId);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -53,6 +66,8 @@ export function buildAuthUrl(cfg: AuthConfig, interactive: boolean, redirectUri:
   url.searchParams.set('scope', cfg.scopes.join(' '));
   url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('prompt', interactive ? 'select_account' : 'none');
+  const hint = (loginHint || '').trim();
+  if (hint) url.searchParams.set('login_hint', hint);
   return url.toString();
 }
 
@@ -102,6 +117,7 @@ export function classifyAuthError(raw: string, interactive: boolean): DriveError
     lower.includes('login_required') ||
     lower.includes('consent_required') ||
     lower.includes('account_selection_required') ||
+    lower.includes('session_selection_required') ||
     lower.includes('user interaction required') ||
     lower.includes('could not be loaded')
   ) {
@@ -116,6 +132,23 @@ export function classifyAuthError(raw: string, interactive: boolean): DriveError
     return interactive ? 'cancelled' : 'needs_reauth';
   }
   return interactive ? 'auth_failed' : 'needs_reauth';
+}
+
+function loginHintKey(cfg: AuthConfig): string {
+  return cfg.loginHintStorageKey || `${cfg.tokenStorageKey}_login_hint`;
+}
+
+/** Email of the account the user picked, sent as login_hint on every later auth request. */
+export async function loadLoginHint(cfg: AuthConfig): Promise<string | null> {
+  const res = await chrome.storage.local.get(loginHintKey(cfg));
+  const v = res[loginHintKey(cfg)];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+export async function saveLoginHint(cfg: AuthConfig, email: string | null | undefined): Promise<void> {
+  const v = (email || '').trim();
+  if (v) await chrome.storage.local.set({ [loginHintKey(cfg)]: v });
+  else await chrome.storage.local.remove(loginHintKey(cfg));
 }
 
 async function loadToken(cfg: AuthConfig): Promise<StoredToken | null> {
@@ -173,9 +206,13 @@ export async function getAccessToken(
   }
 
   const redirectUri = getRedirectUri();
+  const loginHint = await loadLoginHint(cfg);
   let responseUrl: string | undefined;
   try {
-    responseUrl = await launchWebAuthFlow(buildAuthUrl(cfg, opts.interactive, redirectUri), opts.interactive);
+    responseUrl = await launchWebAuthFlow(
+      buildAuthUrl(cfg, opts.interactive, redirectUri, loginHint),
+      opts.interactive
+    );
     if (!responseUrl) throw new Error(opts.interactive ? 'The user closed the sign-in window.' : 'interaction_required');
     const { accessToken, expiresInSec } = parseTokenFromRedirectUrl(responseUrl);
     const token: StoredToken = {
@@ -192,7 +229,7 @@ export async function getAccessToken(
   }
 }
 
-/** Revoke (best effort) and forget the cached token. Skips revoke for expired tokens. */
+/** Revoke (best effort), forget the cached token and the login hint. Skips revoke for expired tokens. */
 export async function revokeToken(cfg: AuthConfig): Promise<void> {
   const cached = await loadToken(cfg);
   if (cached && cached.expiresAt > Date.now()) {
@@ -206,6 +243,7 @@ export async function revokeToken(cfg: AuthConfig): Promise<void> {
     }
   }
   await saveToken(cfg, null);
+  await saveLoginHint(cfg, null);
 }
 
 export async function forgetToken(cfg: AuthConfig): Promise<void> {

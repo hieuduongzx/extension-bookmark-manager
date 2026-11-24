@@ -6,7 +6,7 @@ Keep this folder identical in both repos — copy it as a whole; do not import a
 | File | Role |
 |------|------|
 | `types.ts` | `SyncDocument` / `SyncRecord` / state / error types, tombstone retention (180 days) |
-| `auth.ts` | `launchWebAuthFlow` (Web application client), token cache with `expiresAt`, `needs_reauth`, revoke |
+| `auth.ts` | `launchWebAuthFlow` (Web application client), `login_hint` = remembered account email (needed for `prompt=none` when several Google accounts are signed in), token cache with `expiresAt`, `needs_reauth`, revoke |
 | `driveClient.ts` | Drive v3 REST: list / download / version / create / update / delete / about, retry + backoff, 401 refresh |
 | `merge.ts` | Per-record LWW (`updatedAt`, then `deviceId`, then content), tombstones + pruning, strict remote validation |
 | `engine.ts` | `runSyncCycle` (compare-then-write on `files.version`, per-record local apply) + engine (singleflight, debounce, alarms, retry) |

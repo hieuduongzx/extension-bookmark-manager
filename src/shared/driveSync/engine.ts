@@ -20,6 +20,7 @@ import {
   DriveSyncError,
   TOMBSTONE_RETENTION_MS,
   toDriveErrorInfo,
+  type DriveAccount,
   type DriveErrorInfo,
   type DriveSyncState,
   type SyncDocument,
@@ -200,8 +201,13 @@ export interface EngineConfig {
   signInInteractive: () => Promise<void>;
   /** Make sure a token can be obtained silently; throw DriveSyncError('needs_reauth') if not. */
   ensureToken: () => Promise<void>;
-  /** Revoke + forget the token. */
+  /** Revoke + forget the token (and the remembered account). */
   revoke: () => Promise<void>;
+  /**
+   * Remember the Drive account (e.g. its email as OAuth login_hint) so silent token
+   * refresh works when several Google accounts are signed in to the browser.
+   */
+  rememberAccount?: (account: DriveAccount | null) => Promise<void>;
   isAutoSyncEnabled: () => Promise<boolean>;
   alarms: {
     periodic: string;
@@ -262,6 +268,10 @@ export function createSyncEngine(cfg: EngineConfig): SyncEngine {
     return next;
   }
 
+  async function remember(account: DriveAccount | null) {
+    if (cfg.rememberAccount) await cfg.rememberAccount(account).catch(() => undefined);
+  }
+
   async function clearAlarms(names: string[]) {
     for (const n of names) await chrome.alarms.clear(n).catch(() => false);
   }
@@ -295,9 +305,14 @@ export function createSyncEngine(cfg: EngineConfig): SyncEngine {
     const before = await loadState();
     await saveState({ status: 'syncing', lastAttemptAt: now() });
     try {
+      // Make sure the login_hint is known before the silent token request.
+      if (before.account?.email) await remember(before.account);
       await cfg.ensureToken();
       let account = before.account;
-      if (!account) account = await cfg.client.about();
+      if (!account) {
+        account = await cfg.client.about();
+        if (account) await remember(account);
+      }
       const res = await runSyncCycle(cfg.adapter, cfg.client, {
         now,
         lastSyncAt: before.lastSyncAt,
@@ -382,6 +397,7 @@ export function createSyncEngine(cfg: EngineConfig): SyncEngine {
       return { ok: false, state, error: info };
     }
     const account = await cfg.client.about().catch(() => null);
+    await remember(account);
     await saveState({ signedIn: true, status: 'idle', account, lastError: null, failureCount: 0 });
     await refreshSchedule();
     return sync({ manual: true });

@@ -9,6 +9,7 @@ import {
   getRedirectUri,
   isClientIdConfigured,
   revokeToken,
+  saveLoginHint,
   type AuthConfig,
 } from './shared/driveSync/auth';
 import { createDriveClient } from './shared/driveSync/driveClient';
@@ -202,6 +203,9 @@ export function createBookmarkDriveSync(store: LocalStore) {
       await getAccessToken(AUTH, { interactive: false });
     },
     revoke: () => revokeToken(AUTH),
+    rememberAccount: async (account) => {
+      if (account?.email) await saveLoginHint(AUTH, account.email);
+    },
     isAutoSyncEnabled: () => store.isAutoSyncEnabled(),
     alarms: DRIVE_ALARMS,
   });
