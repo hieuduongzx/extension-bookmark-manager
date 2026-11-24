@@ -44,7 +44,13 @@ export type CollectionIcon =
   | 'music'
   | 'film'
   | 'shopping-cart'
-  | 'globe';
+  | 'globe'
+  | 'bookmark'
+  | 'sparkles'
+  | 'wrench'
+  | 'graduation-cap'
+  | 'newspaper'
+  | 'gamepad';
 
 export type CollectionColor =
   | 'blue'
@@ -82,7 +88,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   locale: 'en',
   defaultCollectionId: '__unsorted__',
   defaultSort: 'newest',
-  defaultViewMode: 'masonry',
+  defaultViewMode: 'list',
   fetchPreviews: true,
   trashAutoEmptyDays: 30,
   openInSidePanel: false,
@@ -102,12 +108,16 @@ export type Message =
   | { type: 'BM:togglePin'; id: string }
   | { type: 'BM:bulkDelete'; ids: string[] }
   | { type: 'BM:bulkMoveToTrash'; ids: string[] }
+  | { type: 'BM:bulkRestore'; ids: string[] }
   | { type: 'BM:bulkMove'; payload: { ids: string[]; collectionId: string } }
   | { type: 'BM:bulkTag'; payload: { ids: string[]; add?: string[]; remove?: string[] } }
   | { type: 'BM:bulkPin'; payload: { ids: string[]; pinned: boolean } }
   | { type: 'BM:addCollection'; payload: Omit<Collection, 'id' | 'createdAt'> }
   | { type: 'BM:updateCollection'; payload: Partial<Collection> & { id: string } }
   | { type: 'BM:deleteCollection'; id: string }
+  | { type: 'BM:renameTag'; payload: { oldTag: string; newTag: string } }
+  | { type: 'BM:deleteTag'; tag: string }
+  | { type: 'BM:saveAllTabs'; payload?: { collectionName?: string; collectionId?: string } }
   | { type: 'BM:importBrowser' }
   | { type: 'BM:importData'; payload: { bookmarks: Bookmark[]; collections: Collection[] } }
   | { type: 'BM:getCurrentTab' }
@@ -117,6 +127,7 @@ export type Message =
   | { type: 'BM:updateSettings'; payload: Partial<AppSettings> }
   | { type: 'BM:checkBrokenLinks'; payload?: { ids?: string[] } }
   | { type: 'BM:emptyOldTrash' }
+  | { type: 'BM:emptyTrash' }
   | { type: 'BM:findDuplicate'; url: string }
   | { type: 'BM:gdriveStatus' }
   | { type: 'BM:gdriveConnect' }
@@ -140,9 +151,11 @@ export const COLLECTION = {
 export const SMART = {
   PINNED: '__smart_pinned__',
   UNTAGGED: '__smart_untagged__',
+  WITH_NOTES: '__smart_with_notes__',
   NO_COVER: '__smart_no_cover__',
   THIS_WEEK: '__smart_this_week__',
   BROKEN: '__smart_broken__',
+  DUPLICATES: '__smart_duplicates__',
 } as const;
 
 export type SmartCollectionId = (typeof SMART)[keyof typeof SMART];

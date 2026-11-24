@@ -15,6 +15,7 @@ import {
 } from './types';
 import {
   canFetchPreview,
+  canonicalizeUrlForMatch,
   findBookmarkByUrl,
   generateId,
   getDomain,
@@ -444,14 +445,96 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const title = info.linkUrl ? getDomain(info.linkUrl) : (tab?.title ?? '');
   const favicon = tab?.favIconUrl || getFavicon(rawUrl);
   await saveUrlAsBookmark(rawUrl, title, favicon, true);
-  try {
-    await chrome.action.setBadgeText({ text: '✓' });
-    await chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
-    setTimeout(() => void chrome.action.setBadgeText({ text: '' }), 1500);
-  } catch {
-    // ignore
-  }
+  await flashSavedBadge();
 });
+
+async function saveAllOpenTabs(options?: {
+  collectionName?: string;
+  collectionId?: string;
+}): Promise<{ savedCount: number; collectionId?: string }> {
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const saveable = tabs
+    .map((tab) => ({
+      url: sanitizeBookmarkUrl(tab.url || ''),
+      title: tab.title || '',
+      favicon: tab.favIconUrl,
+    }))
+    .filter((t): t is { url: string; title: string; favicon: string | undefined } => Boolean(t.url));
+
+  if (saveable.length === 0) return { savedCount: 0 };
+
+  const state = await ensureCache();
+  let targetCollectionId = options?.collectionId;
+  const now = Date.now();
+
+  if (!targetCollectionId) {
+    const label =
+      options?.collectionName?.trim() ||
+      `Session ${new Date(now).toLocaleDateString([], { month: 'short', day: 'numeric' })} ${new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const newCol: Collection = {
+      id: generateId(),
+      name: label,
+      icon: 'bookmark',
+      color: 'indigo',
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.collections = [...state.collections, newCol];
+    await saveCollections(state.collections);
+    targetCollectionId = newCol.id;
+  }
+
+  const seenUrls = new Set<string>();
+  const added: Bookmark[] = [];
+  for (const tab of saveable) {
+    const canon = canonicalizeUrlForMatch(tab.url);
+    if (seenUrls.has(canon)) continue;
+    seenUrls.add(canon);
+
+    const existing = findBookmarkByUrl(state.bookmarks, tab.url);
+    if (existing && existing.collectionId === targetCollectionId) continue;
+
+    if (existing) {
+      // Move existing bookmark into the session collection if not already there, or skip?
+      // Better: update its updatedAt & keep existing metadata if in Trash restore it;
+      // otherwise create/skip duplicates cleanly. Here we skip already-bookmarked URLs in the same session,
+      // and for ones already in another collection we still include them only if not already present.
+      if (existing.collectionId === COLLECTION.TRASH) {
+        state.bookmarks = state.bookmarks.map((b) =>
+          b.id === existing.id
+            ? {
+                ...b,
+                collectionId: targetCollectionId!,
+                previousCollectionId: undefined,
+                updatedAt: now,
+              }
+            : b
+        );
+        added.push(existing);
+      }
+      continue;
+    }
+
+    added.push({
+      id: generateId(),
+      url: tab.url,
+      title: tab.title || getDomain(tab.url),
+      favicon: tab.favicon || getFavicon(tab.url),
+      tags: [],
+      collectionId: targetCollectionId,
+      createdAt: now,
+      updatedAt: now,
+      pinned: false,
+    });
+  }
+
+  const newOnly = added.filter((b) => !state.bookmarks.some((x) => x.id === b.id));
+  if (newOnly.length > 0) {
+    state.bookmarks = [...newOnly, ...state.bookmarks];
+  }
+  await saveBookmarks(state.bookmarks);
+  return { savedCount: added.length, collectionId: targetCollectionId };
+}
 
 async function openDashboard() {
   const state = await ensureCache();
@@ -470,18 +553,36 @@ async function openDashboard() {
   await chrome.tabs.create({ url });
 }
 
+/**
+ * Flash a ✓ badge on the toolbar icon after a save.
+ * MV3 note: the worker stays alive ~30s after an event, so the 1500ms timer
+ * practically always fires; `clearBadge()` is also invoked on the next UI
+ * message as a belt-and-braces reset if the worker was killed mid-flash.
+ */
+async function flashSavedBadge() {
+  try {
+    await chrome.action.setBadgeText({ text: '✓' });
+    await chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
+    setTimeout(() => void clearBadge(), 1500);
+  } catch {
+    // ignore
+  }
+}
+
+async function clearBadge() {
+  try {
+    await chrome.action.setBadgeText({ text: '' });
+  } catch {
+    // ignore
+  }
+}
+
 chrome.commands?.onCommand.addListener(async (command) => {
   if (command === 'save-current-tab') {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.url) {
       await saveUrlAsBookmark(tab.url, tab.title || '', tab.favIconUrl, false);
-      try {
-        await chrome.action.setBadgeText({ text: '✓' });
-        await chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
-        setTimeout(() => void chrome.action.setBadgeText({ text: '' }), 1500);
-      } catch {
-        // ignore
-      }
+      await flashSavedBadge();
     }
   } else if (command === 'open-dashboard') {
     await openDashboard();
@@ -548,6 +649,9 @@ try {
 // ─── Message Handlers ─────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  // Any UI message means a popup/dashboard just opened — reset a possibly
+  // stale ✓ badge whose timer may have died with a terminated worker.
+  void clearBadge();
   void (async () => {
     try {
       switch (message.type) {
@@ -663,13 +767,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'BM:addBookmark': {
           const payload = message.payload as Omit<
             Bookmark,
-            'id' | 'createdAt' | 'updatedAt' | 'coverUrl' | 'pinned'
+            'id' | 'createdAt' | 'updatedAt'
           > & { id?: string };
           const safeUrl = sanitizeBookmarkUrl(payload.url);
           if (!safeUrl) {
             sendResponse({ error: 'Invalid or unsupported bookmark URL' });
             break;
           }
+          const customCover =
+            typeof payload.coverUrl === 'string' && payload.coverUrl.trim() && isSafeBookmarkUrl(payload.coverUrl.trim())
+              ? payload.coverUrl.trim()
+              : undefined;
 
           const state = await ensureCache();
           const existing =
@@ -682,17 +790,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
               ...payload,
               url: safeUrl,
               tags: normalizeTags(payload.tags ?? existing.tags),
+              pinned: payload.pinned !== undefined ? Boolean(payload.pinned) : existing.pinned,
               updatedAt: Date.now(),
-              coverUrl: existing.coverUrl,
+              coverUrl: customCover ?? existing.coverUrl,
             };
             await cachedUpdateBookmark(updated);
             sendResponse(await getState());
             break;
           }
 
-          const coverUrl = state.settings.fetchPreviews
-            ? await fetchLinkPreview(safeUrl)
-            : undefined;
+          const coverUrl =
+            customCover ??
+            (state.settings.fetchPreviews ? await fetchLinkPreview(safeUrl) : undefined);
 
           // A concurrent add of the same URL may have landed during the preview fetch.
           const raced = findBookmarkByUrl(state.bookmarks, safeUrl);
@@ -702,8 +811,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
               ...payload,
               url: safeUrl,
               tags: normalizeTags(payload.tags ?? raced.tags),
+              pinned: payload.pinned !== undefined ? Boolean(payload.pinned) : raced.pinned,
               updatedAt: Date.now(),
-              coverUrl: raced.coverUrl || coverUrl,
+              coverUrl: customCover ?? (raced.coverUrl || coverUrl),
             });
             sendResponse(await getState());
             break;
@@ -718,7 +828,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             createdAt: Date.now(),
             updatedAt: Date.now(),
             coverUrl,
-            pinned: false,
+            pinned: Boolean(payload.pinned),
           };
           await cachedAddBookmark(bookmark);
           sendResponse(await getState());
@@ -740,6 +850,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             break;
           }
 
+          const nextCover =
+            payload.coverUrl === ''
+              ? undefined
+              : typeof payload.coverUrl === 'string' && isSafeBookmarkUrl(payload.coverUrl.trim())
+                ? payload.coverUrl.trim()
+                : existing.coverUrl;
+
           await cachedUpdateBookmark({
             ...existing,
             ...payload,
@@ -754,6 +871,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             tags: payload.tags != null ? normalizeTags(payload.tags) : existing.tags,
             collectionId: payload.collectionId ?? existing.collectionId,
             favicon: payload.favicon || existing.favicon,
+            pinned: payload.pinned !== undefined ? Boolean(payload.pinned) : existing.pinned,
+            coverUrl: nextCover,
             updatedAt: Date.now(),
           });
           sendResponse(await getState());
@@ -874,9 +993,78 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break;
         }
 
+        case 'BM:bulkRestore': {
+          const ids = new Set(message.ids as string[]);
+          const state = await ensureCache();
+          const now = Date.now();
+          state.bookmarks = state.bookmarks.map((b) => {
+            if (!ids.has(b.id) || b.collectionId !== COLLECTION.TRASH) return b;
+            const restoreTo =
+              b.previousCollectionId && b.previousCollectionId !== COLLECTION.TRASH
+                ? b.previousCollectionId
+                : COLLECTION.UNSORTED;
+            return {
+              ...b,
+              collectionId: restoreTo,
+              previousCollectionId: undefined,
+              updatedAt: now,
+            };
+          });
+          await saveBookmarks(state.bookmarks);
+          sendResponse(await getState());
+          break;
+        }
+
         case 'BM:restoreFromTrash': {
           await cachedRestoreFromTrash(message.id as string);
           sendResponse(await getState());
+          break;
+        }
+
+        case 'BM:renameTag': {
+          const { oldTag, newTag } = message.payload as { oldTag: string; newTag: string };
+          const from = String(oldTag || '').trim().toLowerCase().replace(/^#/, '');
+          const to = String(newTag || '').trim().toLowerCase().replace(/^#/, '');
+          if (!from || !to || from === to) {
+            sendResponse(await getState());
+            break;
+          }
+          const state = await ensureCache();
+          const now = Date.now();
+          let changed = false;
+          state.bookmarks = state.bookmarks.map((b) => {
+            if (!b.tags.includes(from)) return b;
+            changed = true;
+            const nextTags = Array.from(new Set(b.tags.map((t) => (t === from ? to : t))));
+            return { ...b, tags: nextTags, updatedAt: now };
+          });
+          if (changed) await saveBookmarks(state.bookmarks);
+          sendResponse(await getState());
+          break;
+        }
+
+        case 'BM:deleteTag': {
+          const target = String(message.tag || '').trim().toLowerCase().replace(/^#/, '');
+          const state = await ensureCache();
+          const now = Date.now();
+          let changed = false;
+          state.bookmarks = state.bookmarks.map((b) => {
+            if (!b.tags.includes(target)) return b;
+            changed = true;
+            return { ...b, tags: b.tags.filter((t) => t !== target), updatedAt: now };
+          });
+          if (changed) await saveBookmarks(state.bookmarks);
+          sendResponse(await getState());
+          break;
+        }
+
+        case 'BM:saveAllTabs': {
+          const result = await saveAllOpenTabs(message.payload);
+          sendResponse({
+            ...(await getState()),
+            savedCount: result.savedCount,
+            collectionId: result.collectionId,
+          });
           break;
         }
 
@@ -918,7 +1106,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'BM:importBrowser': {
           const tree = await chrome.bookmarks.getTree();
           const state = await ensureCache();
-          const existingUrls = new Set(state.bookmarks.map((b) => b.url));
+          // Dedup on the canonical form (www/trailing-slash/hash-insensitive) so a
+          // stored "https://a.com/" and an imported "http://a.com#x" still collide.
+          const existingUrls = new Set(
+            state.bookmarks.map((b) => canonicalizeUrlForMatch(b.url))
+          );
           const nameToId = new Map<string, string>();
           for (const c of state.collections) {
             nameToId.set(`${c.parentId || ''}::${c.name.toLowerCase()}`, c.id);
@@ -959,10 +1151,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           ) {
             for (const node of nodes) {
               if (node.url) {
-                if (existingUrls.has(node.url)) continue;
+                if (existingUrls.has(canonicalizeUrlForMatch(node.url))) continue;
                 const safe = sanitizeBookmarkUrl(node.url);
                 if (!safe) continue;
-                existingUrls.add(safe);
+                existingUrls.add(canonicalizeUrlForMatch(safe));
                 newBookmarks.push({
                   id: generateId(),
                   url: safe,
@@ -1038,7 +1230,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                     ? bookmark.previousCollectionId
                     : undefined,
                 linkStatus:
-                  typeof bookmark.linkStatus === 'number' ? bookmark.linkStatus : bookmark.linkStatus,
+                  typeof bookmark.linkStatus === 'number' ? bookmark.linkStatus : undefined,
                 lastCheckedAt:
                   typeof bookmark.lastCheckedAt === 'number' ? bookmark.lastCheckedAt : undefined,
               } satisfies Bookmark;
@@ -1055,7 +1247,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
               parentId: typeof collection.parentId === 'string' ? collection.parentId : undefined,
             }));
 
+          // Index existing bookmarks by canonical URL so imports with different ids
+          // but the same page still dedup — mirroring the Drive merge behavior.
+          // Loser ids get a tombstone so the duplicate can't resurrect on next sync.
+          const urlIndex = new Map<string, string>();
+          for (const b of state.bookmarks) {
+            urlIndex.set(canonicalizeUrlForMatch(b.url), b.id);
+          }
+          const droppedIds: string[] = [];
+
           for (const b of sanitizedBookmarks) {
+            const canonical = canonicalizeUrlForMatch(b.url);
             const idx = state.bookmarks.findIndex((x) => x.id === b.id);
             if (idx >= 0) {
               state.bookmarks = [
@@ -1063,9 +1265,31 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 b,
                 ...state.bookmarks.slice(idx + 1),
               ];
+              urlIndex.set(canonical, b.id);
+              continue;
+            }
+            const dupId = urlIndex.get(canonical);
+            if (dupId) {
+              const dupIdx = state.bookmarks.findIndex((x) => x.id === dupId);
+              const dup = dupIdx >= 0 ? state.bookmarks[dupIdx] : undefined;
+              if (dup && b.updatedAt > dup.updatedAt) {
+                state.bookmarks = [
+                  ...state.bookmarks.slice(0, dupIdx),
+                  b,
+                  ...state.bookmarks.slice(dupIdx + 1),
+                ];
+                droppedIds.push(dupId);
+                urlIndex.set(canonical, b.id);
+              }
+              // Existing copy is newer (or same) — skip importing the duplicate.
             } else {
               state.bookmarks = [...state.bookmarks, b];
+              urlIndex.set(canonical, b.id);
             }
+          }
+
+          if (droppedIds.length > 0) {
+            await recordTombstones('bookmarks', droppedIds);
           }
 
           for (const c of sanitizedCollections) {
@@ -1156,6 +1380,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'BM:emptyOldTrash': {
           // emptyOldTrashIfNeeded already removes expired-trash bookmarks and records tombstones.
           await emptyOldTrashIfNeeded();
+          sendResponse(await getState());
+          break;
+        }
+
+        case 'BM:emptyTrash': {
+          const state = await ensureCache();
+          const removedIds = state.bookmarks
+            .filter((b) => b.collectionId === COLLECTION.TRASH)
+            .map((b) => b.id);
+          if (removedIds.length > 0) {
+            const removed = new Set(removedIds);
+            state.bookmarks = state.bookmarks.filter((b) => !removed.has(b.id));
+            await Promise.all([
+              saveBookmarks(state.bookmarks),
+              recordTombstones('bookmarks', removedIds),
+            ]);
+          }
           sendResponse(await getState());
           break;
         }

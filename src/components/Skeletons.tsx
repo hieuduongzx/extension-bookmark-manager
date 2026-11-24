@@ -53,15 +53,21 @@ interface BookmarkListSkeletonProps {
 
 export function BookmarkListSkeleton({ count = 6 }: BookmarkListSkeletonProps) {
   return (
-    <div role="status" aria-label="Loading" className="p-5 grid gap-3 animate-pulse" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))' }}>
+    <div role="status" aria-label="Loading" className="p-5 grid gap-3.5 animate-pulse" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))' }}>
       {[...Array(count)].map((_, i) => (
-        <div key={i} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden h-[112px] flex flex-col">
-          <div className="w-full h-14 bg-zinc-100 dark:bg-zinc-800" />
-          <div className="px-3 py-2 flex-1 flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-700 shrink-0 -mt-5 ring-2 ring-white dark:ring-zinc-900" />
-            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-              <div className="h-3 w-3/4 rounded bg-zinc-200 dark:bg-zinc-700" />
-              <div className="h-2 w-1/2 rounded bg-zinc-100 dark:bg-zinc-800" />
+        <div key={i} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden flex flex-col">
+          <div className="w-full h-24 bg-zinc-100 dark:bg-zinc-800" />
+          <div className="p-3 pt-2.5 flex flex-col gap-2">
+            <div className="flex items-start gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-zinc-200 dark:bg-zinc-700 shrink-0 -mt-6 ring-2 ring-white dark:ring-zinc-900" />
+              <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                <div className="h-3 w-4/5 rounded bg-zinc-200 dark:bg-zinc-700" />
+                <div className="h-2.5 w-1/2 rounded bg-zinc-100 dark:bg-zinc-800" />
+              </div>
+            </div>
+            <div className="flex gap-1.5 pt-1">
+              <div className="h-4 w-12 rounded-full bg-zinc-100 dark:bg-zinc-800" />
+              <div className="h-4 w-14 rounded-full bg-zinc-100 dark:bg-zinc-800" />
             </div>
           </div>
         </div>
@@ -92,7 +98,7 @@ export function QuickSaveSkeleton() {
     <div
       role="status"
       aria-label="Loading"
-      className="w-[380px] min-h-[420px] max-h-[560px] flex flex-col bg-white dark:bg-zinc-900 animate-pulse"
+      className="w-[384px] min-h-[430px] max-h-[580px] flex flex-col bg-white dark:bg-zinc-900 animate-pulse"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">

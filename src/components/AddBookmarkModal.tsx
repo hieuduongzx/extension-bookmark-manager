@@ -1,10 +1,31 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { X, Globe, AlignLeft, Hash, Folder, Plus, Check, StickyNote } from 'lucide-react';
-import type { Bookmark, Collection } from '../types';
+import {
+  X,
+  Globe,
+  AlignLeft,
+  Hash,
+  Folder,
+  Plus,
+  Check,
+  StickyNote,
+  CornerDownRight,
+  Pin,
+  Image as ImageIcon,
+} from 'lucide-react';
+import type { Bookmark, Collection, LocaleCode } from '../types';
 import { COLLECTION } from '../types';
-import { buildCollectionTree, flattenCollectionTree, normalizeUrlInput, getFavicon, getFaviconFallback, findBookmarkByUrl, getCollectionTags } from '../utils';
+import {
+  buildCollectionTree,
+  flattenCollectionTree,
+  normalizeUrlInput,
+  getFavicon,
+  getFaviconFallback,
+  findBookmarkByUrl,
+  findRelatedRootBookmarks,
+  getCollectionTags,
+} from '../utils';
 import { useEscapeKey, useFocusTrap } from '../hooks';
-import { t } from '../i18n';
+import { createT } from '../i18n';
 import { Dropdown } from './Dropdown';
 
 interface AddBookmarkModalProps {
@@ -12,9 +33,12 @@ interface AddBookmarkModalProps {
   existingBookmarks: Bookmark[];
   collections: Collection[];
   allTags: string[];
-  onSave: (data: Omit<Bookmark, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<void>;
+  onSave: (
+    data: Omit<Bookmark, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
+  ) => Promise<void>;
   onQuickAddCollection: (name: string) => Promise<string | void>;
   onClose: () => void;
+  locale?: LocaleCode;
 }
 
 export function AddBookmarkModal({
@@ -25,10 +49,14 @@ export function AddBookmarkModal({
   onSave,
   onQuickAddCollection,
   onClose,
+  locale = 'en',
 }: AddBookmarkModalProps) {
+  const t = useMemo(() => createT(locale), [locale]);
   const [url, setUrl] = useState(initial?.url || '');
   const [title, setTitle] = useState(initial?.title || '');
   const [note, setNote] = useState(initial?.note || '');
+  const [coverUrl, setCoverUrl] = useState(initial?.coverUrl || '');
+  const [pinned, setPinned] = useState(Boolean(initial?.pinned));
   const [collectionId, setCollectionId] = useState(initial?.collectionId || COLLECTION.UNSORTED);
   const [editingId, setEditingId] = useState<string | undefined>(initial?.id);
 
@@ -50,18 +78,15 @@ export function AddBookmarkModal({
   const didHydrateRef = useRef(false);
   useEscapeKey(onClose);
 
-  // Auto-grow note textarea up to 200px
+  // Auto-grow note textarea up to 180px
   useEffect(() => {
     const el = noteRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [note]);
 
   useEffect(() => {
-    // Hydrate from the active tab exactly once, and never after the user starts typing —
-    // otherwise a background/gdrive refresh that changes `existingBookmarks` re-runs this
-    // effect and wipes what the user entered.
     if (didHydrateRef.current) return;
     if (initial?.url || initial?.title) {
       didHydrateRef.current = true;
@@ -72,12 +97,14 @@ export function AddBookmarkModal({
       if (ignore || didHydrateRef.current) return;
       didHydrateRef.current = true;
       const tab = tabs[0];
-      if (tab?.url && !tab.url.startsWith('chrome://')) {
+      if (tab?.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
         const existing = findBookmarkByUrl(existingBookmarks, tab.url);
         if (existing) {
           setUrl(existing.url);
           setTitle(existing.title);
           setNote(existing.note || '');
+          setCoverUrl(existing.coverUrl || '');
+          setPinned(Boolean(existing.pinned));
           setCollectionId(existing.collectionId);
           setTags(existing.tags);
           setEditingId(existing.id);
@@ -92,24 +119,18 @@ export function AddBookmarkModal({
     };
   }, [initial, existingBookmarks]);
 
-
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitForm = async () => {
     const normalized = normalizeUrlInput(url);
     if (!normalized) return;
     setError(null);
     setIsSaving(true);
 
-    // Check if the user manually typed an existing URL — match canonically (ignoring
-    // www / trailing slash / hash) to stay consistent with the backend's merge, which
-    // would otherwise silently overwrite a "different" URL that's really the same page.
     let finalEditingId = editingId;
     if (!finalEditingId) {
-       const manuallyTypedExisting = findBookmarkByUrl(existingBookmarks, normalized);
-       if (manuallyTypedExisting) {
-         finalEditingId = manuallyTypedExisting.id;
-       }
+      const manuallyTypedExisting = findBookmarkByUrl(existingBookmarks, normalized);
+      if (manuallyTypedExisting) {
+        finalEditingId = manuallyTypedExisting.id;
+      }
     }
 
     try {
@@ -118,6 +139,8 @@ export function AddBookmarkModal({
         url: normalized,
         title,
         note,
+        pinned,
+        coverUrl: coverUrl.trim() ? normalizeUrlInput(coverUrl) : undefined,
         favicon: '',
         collectionId,
         tags,
@@ -130,8 +153,13 @@ export function AddBookmarkModal({
     }
   };
 
-  const handleAddTag = (t: string) => {
-    const trimmed = t.trim().toLowerCase().replace(/^#/, '');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitForm();
+  };
+
+  const handleAddTag = (tagStr: string) => {
+    const trimmed = tagStr.trim().toLowerCase().replace(/^#/, '');
     if (trimmed && !tags.includes(trimmed)) {
       setTags([...tags, trimmed]);
     }
@@ -140,7 +168,7 @@ export function AddBookmarkModal({
   };
 
   const removeTag = (tToRemove: string) => {
-    setTags(tags.filter((t) => t !== tToRemove));
+    setTags(tags.filter((x) => x !== tToRemove));
   };
 
   const handleCreateCollection = async () => {
@@ -156,18 +184,16 @@ export function AddBookmarkModal({
   };
 
   const filteredTags = allTags
-    .filter((t) => !tags.includes(t))
-    .filter((t) => t.includes(tagInputValue.toLowerCase().trim()));
+    .filter((tag) => !tags.includes(tag))
+    .filter((tag) => tag.includes(tagInputValue.toLowerCase().trim()));
 
-  // Tags used by bookmarks already in the selected collection (incl. sub-collections),
-  // ranked by frequency. These get suggested first when the user focuses the tag input.
   const collectionSuggestedTags = useMemo(
     () => getCollectionTags(existingBookmarks, collections, collectionId),
     [existingBookmarks, collections, collectionId]
   );
   const visibleCollectionTags = collectionSuggestedTags
-    .filter((t) => !tags.includes(t))
-    .filter((t) => t.includes(tagInputValue.toLowerCase().trim()));
+    .filter((tag) => !tags.includes(tag))
+    .filter((tag) => tag.includes(tagInputValue.toLowerCase().trim()));
 
   const collectionOptions = useMemo(
     () => flattenCollectionTree(buildCollectionTree(collections)),
@@ -195,9 +221,16 @@ export function AddBookmarkModal({
     return match && match.id !== editingId ? match : null;
   }, [url, existingBookmarks, editingId]);
 
+  const relatedRoots = useMemo(() => {
+    if (duplicate) return [];
+    const candidate = normalizeUrlInput(url);
+    if (!candidate) return [];
+    return findRelatedRootBookmarks(existingBookmarks, candidate, editingId).slice(0, 3);
+  }, [url, existingBookmarks, editingId, duplicate]);
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 dark:bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/45 dark:bg-black/65 backdrop-blur-[2px]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -205,30 +238,53 @@ export function AddBookmarkModal({
     >
       <div
         ref={containerRef}
-        className="relative w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-xl rounded-xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-pop rounded-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !isSaving && url) {
+            e.preventDefault();
+            void submitForm();
+          }
+        }}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
-          <h2 id="add-bookmark-title" className="text-[15px] font-semibold text-zinc-900 dark:text-zinc-50 tracking-tight">
+          <h2
+            id="add-bookmark-title"
+            className="text-[15px] font-semibold text-zinc-900 dark:text-zinc-50 tracking-tight"
+          >
             {editingId ? t('editBookmark') : t('addBookmark')}
           </h2>
-          <button
-            onClick={onClose}
-            className="btn-icon-sm"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPinned((p) => !p)}
+              title={pinned ? t('unpinBookmark') : t('pinBookmark')}
+              aria-label={pinned ? t('unpinBookmark') : t('pinBookmark')}
+              aria-pressed={pinned}
+              className={`btn-icon-sm ${
+                pinned
+                  ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400'
+                  : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Pin className={`w-4 h-4 ${pinned ? 'fill-current' : ''}`} />
+            </button>
+            <button type="button" onClick={onClose} className="btn-icon-sm" aria-label={t('close')}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-y-auto custom-scrollbar p-5 flex-1 pl-5 pr-5">
-          <form id="add-bookmark-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <div className="overflow-y-auto custom-scrollbar p-5 flex-1">
+          <form id="add-bookmark-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
             {error && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
                 {error}
               </div>
             )}
+
             {duplicate && (
-              <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-[12px] font-medium text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-[12px] font-medium text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
                 <span>{t('duplicateWarning')}</span>
                 <button
                   type="button"
@@ -237,6 +293,8 @@ export function AddBookmarkModal({
                     setEditingId(duplicate.id);
                     setTitle(duplicate.title);
                     setNote(duplicate.note || '');
+                    setCoverUrl(duplicate.coverUrl || '');
+                    setPinned(Boolean(duplicate.pinned));
                     setTags(duplicate.tags);
                     setCollectionId(duplicate.collectionId);
                   }}
@@ -245,6 +303,36 @@ export function AddBookmarkModal({
                 </button>
               </div>
             )}
+
+            {!duplicate && relatedRoots.length > 0 && (
+              <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 px-3 py-2 text-[12px] text-sky-800 dark:text-sky-200">
+                <p className="flex items-center gap-1.5 font-medium">
+                  <CornerDownRight className="w-3.5 h-3.5 shrink-0" />
+                  {t('relatedBookmarkExists')}
+                </p>
+                <ul className="mt-1.5 space-y-1">
+                  {relatedRoots.map((root) => (
+                    <li key={root.id} className="flex items-center gap-1.5 min-w-0">
+                      <img
+                        src={root.favicon || getFavicon(root.url)}
+                        alt=""
+                        className="w-3.5 h-3.5 rounded-sm shrink-0"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = getFaviconFallback(root.url);
+                        }}
+                      />
+                      <span className="truncate" title={root.url}>
+                        {root.title || root.url}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1.5 text-[11px] text-sky-600 dark:text-sky-400">
+                  {t('saveSeparately')}
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-zinc-400" /> {t('url')}
@@ -253,8 +341,6 @@ export function AddBookmarkModal({
                 <input
                   autoFocus
                   required
-                  // text (not url) so a bare domain like "example.com" isn't blocked by native
-                  // URL validation before normalizeUrlInput can prepend https:// on submit.
                   type="text"
                   inputMode="url"
                   value={url}
@@ -299,14 +385,15 @@ export function AddBookmarkModal({
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5">
-                <StickyNote className="w-3.5 h-3.5 text-zinc-400" /> {t('note')} <span className="text-zinc-400 font-normal">({t('optional')})</span>
+                <StickyNote className="w-3.5 h-3.5 text-zinc-400" /> {t('note')}{' '}
+                <span className="text-zinc-400 font-normal">({t('optional')})</span>
               </label>
               <textarea
                 ref={noteRef}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
-                className="brand-input w-full min-h-[60px] max-h-[200px] py-2.5 leading-relaxed resize-none custom-scrollbar overflow-auto"
+                className="brand-input w-full min-h-[60px] max-h-[180px] py-2 leading-relaxed resize-none custom-scrollbar overflow-auto"
                 placeholder={t('notePlaceholder')}
               />
             </div>
@@ -326,7 +413,7 @@ export function AddBookmarkModal({
                   </button>
                 )}
               </div>
-              
+
               {isCreatingCollection ? (
                 <div className="flex items-center gap-2">
                   <input
@@ -337,11 +424,9 @@ export function AddBookmarkModal({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        handleCreateCollection();
+                        void handleCreateCollection();
                       }
                       if (e.key === 'Escape') {
-                        // Cancel inline creation only — don't let Escape bubble up and close
-                        // the whole modal.
                         e.preventDefault();
                         e.stopPropagation();
                         setIsCreatingCollection(false);
@@ -352,7 +437,7 @@ export function AddBookmarkModal({
                   />
                   <button
                     type="button"
-                    onClick={handleCreateCollection}
+                    onClick={() => void handleCreateCollection()}
                     className="h-9 px-3 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-200 rounded-md transition-colors"
                   >
                     <Check className="w-4 h-4" />
@@ -369,7 +454,7 @@ export function AddBookmarkModal({
                 <Dropdown
                   value={collectionId}
                   onChange={setCollectionId}
-                  ariaLabel="Collection"
+                  ariaLabel={t('collection')}
                   options={[
                     { value: COLLECTION.UNSORTED, label: t('unsorted') },
                     ...collectionOptions.map((c) => ({
@@ -391,22 +476,22 @@ export function AddBookmarkModal({
               <label className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5">
                 <Hash className="w-3.5 h-3.5 text-zinc-400" /> {t('tags')}
               </label>
-              
+
               <div
-                className="min-h-[36px] p-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md flex flex-wrap gap-1.5 focus-within:bg-white dark:focus-within:bg-zinc-900 focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500/30 transition-shadow cursor-text"
+                className="min-h-[38px] p-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg flex flex-wrap gap-1.5 focus-within:bg-white dark:focus-within:bg-zinc-900 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all cursor-text"
                 onClick={() => tagInputRef.current?.focus()}
               >
-                {tags.map((t) => (
+                {tags.map((tag) => (
                   <span
-                    key={t}
-                    className="flex items-center gap-1 px-1.5 py-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-[12px] rounded font-medium shadow-sm"
+                    key={tag}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-[12px] rounded-md font-medium shadow-sm"
                   >
-                    {t}
+                    {tag}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        removeTag(t);
+                        removeTag(tag);
                       }}
                       className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
                     >
@@ -429,9 +514,7 @@ export function AddBookmarkModal({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ',') {
                       e.preventDefault();
-                      if (tagInputValue) {
-                        handleAddTag(tagInputValue);
-                      }
+                      if (tagInputValue) handleAddTag(tagInputValue);
                     } else if (e.key === 'Backspace' && !tagInputValue && tags.length > 0) {
                       setTags(tags.slice(0, -1));
                     }
@@ -441,80 +524,99 @@ export function AddBookmarkModal({
                 />
               </div>
 
-              {/* Tag Suggestions Dropdown */}
               {showTagSuggestions &&
                 (tagInputValue || visibleCollectionTags.length > 0 || filteredTags.length > 0) && (
-                <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg z-10 custom-scrollbar">
-                  {tagInputValue && !allTags.includes(tagInputValue.toLowerCase().trim()) && !tags.includes(tagInputValue.toLowerCase().trim()) && (
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleAddTag(tagInputValue);
-                      }}
-                      className="w-full text-left px-3 py-2 text-[12px] text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/50 flex items-center gap-2 font-medium"
-                    >
-                      <Plus className="w-3 h-3" /> {t('create')} "{tagInputValue.trim()}"
-                    </button>
-                  )}
-                  {visibleCollectionTags.length > 0 && (
-                    <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                      {t('suggestedTags')}
-                    </div>
-                  )}
-                  {visibleCollectionTags.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleAddTag(t);
-                      }}
-                      className="w-full text-left px-3 py-2 text-[12px] text-brand-700 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                    >
-                      # {t}
-                    </button>
-                  ))}
-                  {filteredTags
-                    .filter((t) => !visibleCollectionTags.includes(t))
-                    .map((t) => (
+                  <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-pop z-10 custom-scrollbar">
+                    {tagInputValue &&
+                      !allTags.includes(tagInputValue.toLowerCase().trim()) &&
+                      !tags.includes(tagInputValue.toLowerCase().trim()) && (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleAddTag(tagInputValue);
+                          }}
+                          className="w-full text-left px-3 py-2 text-[12px] text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/50 flex items-center gap-2 font-medium"
+                        >
+                          <Plus className="w-3 h-3" /> {t('create')} "{tagInputValue.trim()}"
+                        </button>
+                      )}
+                    {visibleCollectionTags.length > 0 && (
+                      <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                        {t('suggestedTags')}
+                      </div>
+                    )}
+                    {visibleCollectionTags.map((tag) => (
                       <button
-                        key={t}
+                        key={tag}
                         type="button"
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          handleAddTag(t);
+                          handleAddTag(tag);
                         }}
-                        className="w-full text-left px-3 py-2 text-[12px] text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-brand-700 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
                       >
-                        # {t}
+                        # {tag}
                       </button>
                     ))}
-                  {filteredTags.length === 0 && !tagInputValue && visibleCollectionTags.length === 0 && (
-                    <div className="px-3 py-2 text-[12px] text-zinc-400 dark:text-zinc-500 italic">{t('noExistingTags')}</div>
-                  )}
-                </div>
-              )}
+                    {filteredTags
+                      .filter((tag) => !visibleCollectionTags.includes(tag))
+                      .map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleAddTag(tag);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-[12px] text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+                        >
+                          # {tag}
+                        </button>
+                      ))}
+                    {filteredTags.length === 0 &&
+                      !tagInputValue &&
+                      visibleCollectionTags.length === 0 && (
+                        <div className="px-3 py-2 text-[12px] text-zinc-400 dark:text-zinc-500 italic">
+                          {t('noExistingTags')}
+                        </div>
+                      )}
+                  </div>
+                )}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-zinc-400" /> {t('coverImageUrl')}{' '}
+                <span className="text-zinc-400 font-normal">({t('optional')})</span>
+              </label>
+              <input
+                type="text"
+                inputMode="url"
+                value={coverUrl}
+                onChange={(e) => setCoverUrl(e.target.value)}
+                className="brand-input w-full"
+                placeholder={t('coverImagePlaceholder')}
+              />
             </div>
           </form>
         </div>
 
-        <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-2 shrink-0 bg-zinc-50/50 dark:bg-zinc-800/40">
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-ghost-sm px-4"
-          >
-            {t('cancel')}
-          </button>
-          <button
-            type="submit"
-            form="add-bookmark-form"
-            disabled={isSaving || !url}
-            className="btn-brand-sm px-4"
-          >
-            {isSaving ? t('saving') : t('save')}
-          </button>
+        <div className="px-5 py-3.5 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2 shrink-0 bg-zinc-50/60 dark:bg-zinc-800/40">
+          <span className="text-[11px] text-zinc-400 hidden sm:inline">Ctrl/⌘+Enter</span>
+          <div className="flex gap-2 ml-auto">
+            <button type="button" onClick={onClose} className="btn-ghost-sm px-4">
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              form="add-bookmark-form"
+              disabled={isSaving || !url}
+              className="btn-brand-sm px-4"
+            >
+              {isSaving ? t('saving') : editingId ? t('update') : t('save')}
+            </button>
+          </div>
         </div>
       </div>
     </div>

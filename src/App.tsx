@@ -1,10 +1,27 @@
-import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense, useTransition } from 'react';
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useRef,
+  lazy,
+  Suspense,
+  useTransition,
+} from 'react';
 import { Sidebar } from './components/Sidebar';
 import { SearchBar } from './components/SearchBar';
+import { CollectionHeader } from './components/CollectionHeader';
 import { BookmarkList } from './components/BookmarkList';
 import { FolderView } from './components/FolderView';
 import { QuickSave } from './components/QuickSave';
-import { SidebarSkeleton, SearchBarSkeleton, BookmarkListSkeleton, ModalSkeleton, QuickSaveSkeleton } from './components/Skeletons';
+import { ConfirmDialog, type ConfirmDialogState } from './components/ConfirmDialog';
+import {
+  SidebarSkeleton,
+  SearchBarSkeleton,
+  BookmarkListSkeleton,
+  ModalSkeleton,
+  QuickSaveSkeleton,
+} from './components/Skeletons';
 import {
   COLLECTION,
   DEFAULT_SETTINGS,
@@ -18,15 +35,21 @@ import {
   type AppSettings,
   type Message,
   type SortOrder,
+  type ThemeMode,
   type ViewMode,
 } from './types';
 import {
   applyTheme,
   buildDescendantsMap,
+  buildRelatedRootsMap,
+  exportBookmarksToHtml,
   filterBySmartCollection,
   findBookmarkByUrl,
   getDomain,
+  hasSearchOperators,
+  isBrokenLink,
   matchesSearch,
+  parseNetscapeBookmarksHtml,
   parseSearchQuery,
 } from './utils';
 import { useDebouncedValue, useToastQueue } from './hooks';
@@ -43,10 +66,12 @@ const CollectionModal = lazy(() =>
 const SettingsModal = lazy(() =>
   import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal }))
 );
+const CommandPalette = lazy(() =>
+  import('./components/CommandPalette').then((m) => ({ default: m.CommandPalette }))
+);
 
 type ColumnCount = 1 | 2 | 3 | 4 | 5;
 
-/** Parse a stored column count, falling back when the value is missing/NaN/out of range. */
 function parseColumns(raw: string | null, fallback: ColumnCount): ColumnCount {
   const n = raw != null ? parseInt(raw, 10) : NaN;
   return n === 1 || n === 2 || n === 3 || n === 4 || n === 5 ? n : fallback;
@@ -80,7 +105,6 @@ function useExtensionState() {
     });
   }, [applyResponse]);
 
-  // Multi-window / multi-view sync
   useEffect(() => {
     const onChanged = (
       changes: { [key: string]: chrome.storage.StorageChange },
@@ -102,7 +126,7 @@ function useExtensionState() {
   }, [applyResponse]);
 
   const send = useCallback(
-    (msg: Message): Promise<AppState> => {
+    (msg: Message): Promise<AppState & Record<string, unknown>> => {
       return new Promise((resolve, reject) => {
         chrome.runtime.sendMessage(msg, (response) => {
           if (chrome.runtime.lastError) {
@@ -115,7 +139,7 @@ function useExtensionState() {
           }
           if (response && !response.error) {
             applyResponse(response);
-            resolve(response as AppState);
+            resolve(response as AppState & Record<string, unknown>);
             return;
           }
           reject(new Error('No response from background service'));
@@ -142,8 +166,12 @@ function App() {
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const lastSelectedIdRef = useRef<string | null>(null);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [showPrefs, setShowPrefs] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [forceLibrary, setForceLibrary] = useState(isLibrary);
   const [autoGdriveConnect, setAutoGdriveConnect] = useState(
     () => params.get('gdrive') === 'connect'
@@ -154,12 +182,41 @@ function App() {
   const [gdriveStatus, setGdriveStatus] = useState<GDriveStatus | null>(null);
   const [gdriveBusy, setGdriveBusy] = useState(false);
 
+  // Responsive sidebar collapse (auto-collapse in narrow Chrome Side Panel)
+  const [isNarrowViewport, setIsNarrowViewport] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 680
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 680) return false;
+    return localStorage.getItem('bm_sidebarHidden') !== '1';
+  });
+
+  useEffect(() => {
+    const onResize = () => {
+      const narrow = window.innerWidth < 680;
+      setIsNarrowViewport(narrow);
+      if (narrow) setSidebarOpen(false);
+      else setSidebarOpen(localStorage.getItem('bm_sidebarHidden') !== '1');
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen((prev) => {
+      const next = !prev;
+      if (!isNarrowViewport) {
+        localStorage.setItem('bm_sidebarHidden', next ? '0' : '1');
+      }
+      return next;
+    });
+  }, [isNarrowViewport]);
+
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem('bm_viewMode') as ViewMode | null;
     if (saved === 'grid' || saved === 'list' || saved === 'masonry' || saved === 'folder') {
       return saved;
     }
-    // List is the default view.
     return 'list';
   });
 
@@ -184,8 +241,6 @@ function App() {
     if (state.settings.defaultSort) setSortOrder(state.settings.defaultSort);
   }, [state.settings.defaultSort]);
 
-  // Seed the view mode from the user's saved default the first time state loads,
-  // unless a per-device localStorage override already exists.
   const didSeedViewMode = useRef(false);
   useEffect(() => {
     if (!isLoaded || didSeedViewMode.current) return;
@@ -195,7 +250,6 @@ function App() {
     }
   }, [isLoaded, state.settings.defaultViewMode]);
 
-  // Deep-link from popup: open Settings and start Drive connect on Dashboard
   useEffect(() => {
     if (!isLoaded || !autoGdriveConnect || !isDashboard) return;
     setForceLibrary(true);
@@ -232,20 +286,20 @@ function App() {
     localStorage.setItem('bm_viewMode', mode);
   }, []);
 
-  const [bookmarkColumns, setBookmarkColumns] = useState<1 | 2 | 3 | 4 | 5>(() =>
-    parseColumns(localStorage.getItem('bm_bookmarkColumns'), 1)
+  const [bookmarkColumns, setBookmarkColumns] = useState<ColumnCount>(() =>
+    parseColumns(localStorage.getItem('bm_bookmarkColumns'), isDashboard ? 3 : 2)
   );
 
-  const handleBookmarkColumnsChange = useCallback((c: 1 | 2 | 3 | 4 | 5) => {
+  const handleBookmarkColumnsChange = useCallback((c: ColumnCount) => {
     setBookmarkColumns(c);
     localStorage.setItem('bm_bookmarkColumns', String(c));
   }, []);
 
-  const [collectionColumns, setCollectionColumns] = useState<1 | 2 | 3 | 4 | 5>(() =>
+  const [collectionColumns, setCollectionColumns] = useState<ColumnCount>(() =>
     parseColumns(localStorage.getItem('bm_collectionColumns'), 3)
   );
 
-  const handleCollectionColumnsChange = useCallback((c: 1 | 2 | 3 | 4 | 5) => {
+  const handleCollectionColumnsChange = useCallback((c: ColumnCount) => {
     setCollectionColumns(c);
     localStorage.setItem('bm_collectionColumns', String(c));
   }, []);
@@ -263,12 +317,9 @@ function App() {
   }>({ type: 'none' });
 
   const { toasts, show: showToast, dismiss: dismissToast } = useToastQueue();
-  // Memoize so handler identities (and the memoized child components they're passed to)
-  // stay stable across renders — createT returns a fresh closure every call.
   const t = useMemo(() => createT(state.settings.locale), [state.settings.locale]);
 
   const openGDriveSettings = useCallback(() => {
-    // OAuth needs a full tab — popup closes when the auth window opens
     if (!isDashboard) {
       const url = chrome.runtime.getURL('index.html?target=dashboard&gdrive=connect');
       void chrome.tabs.create({ url });
@@ -356,9 +407,18 @@ function App() {
     [state.collections]
   );
 
+  const relatedRootsMap = useMemo(
+    () => buildRelatedRootsMap(state.bookmarks),
+    [state.bookmarks]
+  );
+
+  const parsedSearch = useMemo(
+    () => parseSearchQuery(debouncedSearchQuery),
+    [debouncedSearchQuery]
+  );
+
   const filtered = useMemo(() => {
     let result = state.bookmarks;
-    const parsed = parseSearchQuery(debouncedSearchQuery);
 
     if (activeCollection === COLLECTION.TRASH) {
       result = result.filter((b) => b.collectionId === COLLECTION.TRASH);
@@ -376,14 +436,8 @@ function App() {
       }
     }
 
-    if (
-      debouncedSearchQuery.trim() ||
-      parsed.tags.length ||
-      parsed.site ||
-      parsed.inName ||
-      parsed.note
-    ) {
-      result = result.filter((b) => matchesSearch(b, parsed, state.collections));
+    if (hasSearchOperators(parsedSearch)) {
+      result = result.filter((b) => matchesSearch(b, parsedSearch, state.collections));
     }
 
     if (activeTags.length > 0) {
@@ -395,7 +449,7 @@ function App() {
     state.bookmarks,
     state.collections,
     activeCollection,
-    debouncedSearchQuery,
+    parsedSearch,
     activeTags,
     descendantsMap,
   ]);
@@ -426,6 +480,11 @@ function App() {
     });
   }, [filtered, sortOrder]);
 
+  // Reset keyboard focus index when filtered list changes
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [activeCollection, debouncedSearchQuery, activeTags, sortOrder]);
+
   const bookmarkCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     let allCount = 0;
@@ -444,9 +503,11 @@ function App() {
 
     counts[SMART.PINNED] = filterBySmartCollection(state.bookmarks, SMART.PINNED).length;
     counts[SMART.UNTAGGED] = filterBySmartCollection(state.bookmarks, SMART.UNTAGGED).length;
+    counts[SMART.WITH_NOTES] = filterBySmartCollection(state.bookmarks, SMART.WITH_NOTES).length;
     counts[SMART.NO_COVER] = filterBySmartCollection(state.bookmarks, SMART.NO_COVER).length;
     counts[SMART.THIS_WEEK] = filterBySmartCollection(state.bookmarks, SMART.THIS_WEEK).length;
     counts[SMART.BROKEN] = filterBySmartCollection(state.bookmarks, SMART.BROKEN).length;
+    counts[SMART.DUPLICATES] = filterBySmartCollection(state.bookmarks, SMART.DUPLICATES).length;
 
     for (const c of state.collections) {
       const descendants = descendantsMap.get(c.id);
@@ -459,21 +520,42 @@ function App() {
     return counts;
   }, [state.bookmarks, state.collections, descendantsMap]);
 
-  const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    state.bookmarks.forEach((b) => b.tags.forEach((tag) => tags.add(tag)));
-    return Array.from(tags).sort();
+  const { allTags, tagCounts } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const b of state.bookmarks) {
+      if (b.collectionId === COLLECTION.TRASH) continue;
+      for (const tag of b.tags) {
+        counts[tag] = (counts[tag] || 0) + 1;
+      }
+    }
+    const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    return { allTags: sorted, tagCounts: counts };
   }, [state.bookmarks]);
 
   const availableTags = useMemo(() => {
-    const tags = new Set<string>();
+    const counts = new Map<string, number>();
     filtered.forEach((b) =>
       b.tags.forEach((tag) => {
-        if (!activeTags.includes(tag)) tags.add(tag);
+        if (!activeTags.includes(tag)) counts.set(tag, (counts.get(tag) || 0) + 1);
       })
     );
-    return Array.from(tags).sort();
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag]) => tag);
   }, [filtered, activeTags]);
+
+  const libraryStats = useMemo(() => {
+    const nonTrash = state.bookmarks.filter((b) => b.collectionId !== COLLECTION.TRASH);
+    return {
+      totalBookmarks: nonTrash.length,
+      totalCollections: state.collections.length,
+      totalTags: allTags.length,
+      pinnedCount: nonTrash.filter((b) => b.pinned).length,
+      brokenCount: nonTrash.filter((b) => isBrokenLink(b)).length,
+    };
+  }, [state.bookmarks, state.collections, allTags.length]);
+
+  // ─── Mutations & Actions ────────────────────────────────────────────────────
 
   const handleSaveBookmark = async (
     data: Omit<Bookmark, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
@@ -488,6 +570,8 @@ function App() {
           title: data.title,
           note: data.note,
           tags: data.tags,
+          pinned: data.pinned,
+          coverUrl: data.coverUrl,
           favicon: data.favicon,
           collectionId: data.collectionId,
         },
@@ -503,6 +587,7 @@ function App() {
     name: string;
     icon: CollectionIcon;
     color: CollectionColor;
+    parentId?: string;
   }) => {
     const editing = modal.type === 'collection' && modal.existing;
     if (editing && modal.existing) {
@@ -526,7 +611,6 @@ function App() {
     showToast(`${t('collectionCreated')}: ${name}`);
     const created = res.collections.find((c) => !beforeIds.has(c.id) && c.name === name);
     if (created) return created.id;
-    // Fallback: newest with matching name
     const matches = res.collections.filter((c) => c.name === name);
     if (matches.length === 0) return undefined;
     return matches.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b)).id;
@@ -543,7 +627,7 @@ function App() {
         return;
       }
       await send({ type: 'BM:updateBookmark', payload: { ...bookmark, collectionId } });
-      showToast('Bookmark moved');
+      showToast(t('bookmarkMoved'));
     },
     [state.bookmarks, send, showToast, t]
   );
@@ -554,7 +638,7 @@ function App() {
       let current = targetId;
       while (current) {
         if (current === draggedId) {
-          showToast('Cannot move a folder into itself or its children');
+          showToast(t('cannotMoveIntoItself'));
           return;
         }
         const parentColl = state.collections.find((c) => c.id === current);
@@ -562,13 +646,14 @@ function App() {
       }
       const draggedColl = state.collections.find((c) => c.id === draggedId);
       if (!draggedColl) return;
+      if ((draggedColl.parentId || null) === (targetId || null)) return;
       await send({
         type: 'BM:updateCollection',
         payload: { ...draggedColl, parentId: targetId || undefined },
       });
-      showToast('Collection moved');
+      showToast(t('collectionMoved'));
     },
-    [state.collections, send, showToast]
+    [state.collections, send, showToast, t]
   );
 
   const handleTogglePinCollection = useCallback(
@@ -583,19 +668,24 @@ function App() {
     [state.collections, send]
   );
 
-  const handleImport = async () => {
-    if (window.confirm(t('confirmImport'))) {
-      showToast('…');
-      const res = (await send({ type: 'BM:importBrowser' })) as AppState & {
-        imported?: number;
-        importedCollections?: number;
-      };
-      showToast(
-        `${t('imported')}: ${res.imported ?? 0} bookmarks` +
-          (res.importedCollections ? `, ${res.importedCollections} folders` : '')
-      );
-    }
-  };
+  const handleImport = useCallback(() => {
+    setConfirmDialog({
+      title: t('importBrowser'),
+      message: t('confirmImport'),
+      confirmLabel: t('importBrowser'),
+      variant: 'primary',
+      onConfirm: async () => {
+        showToast('…');
+        const res = await send({ type: 'BM:importBrowser' });
+        const imported = Number(res.imported ?? 0);
+        const importedCols = Number(res.importedCollections ?? 0);
+        showToast(
+          `${t('imported')}: ${imported} ${t('bookmarksLabel')}` +
+            (importedCols ? `, ${importedCols} ${t('foldersLabel')}` : '')
+        );
+      },
+    });
+  }, [send, showToast, t]);
 
   const handleExportData = useCallback(() => {
     let url: string | null = null;
@@ -605,7 +695,7 @@ function App() {
         collections: state.collections,
         settings: state.settings,
         exportDate: new Date().toISOString(),
-        version: '1.1',
+        version: '1.2',
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       url = URL.createObjectURL(blob);
@@ -617,28 +707,31 @@ function App() {
       document.body.removeChild(a);
       showToast(t('exported'));
     } catch {
-      showToast('Failed to export bookmarks');
+      showToast(t('exportFailed'));
     } finally {
       if (url) URL.revokeObjectURL(url);
     }
   }, [state.bookmarks, state.collections, state.settings, showToast, t]);
 
-  const handleRefreshPreviews = async () => {
-    showToast('…');
-    await send({ type: 'BM:refreshPreviews' });
-    showToast(t('previewsDone'));
-  };
-
-  const handleCheckBroken = async () => {
-    showToast('…');
-    await send({ type: 'BM:checkBrokenLinks' });
-    showToast(t('brokenCheckDone'));
-  };
-
-  const handleEmptyOldTrash = async () => {
-    await send({ type: 'BM:emptyOldTrash' });
-    showToast(t('trashCleaned'));
-  };
+  const handleExportHtml = useCallback(() => {
+    let url: string | null = null;
+    try {
+      const html = exportBookmarksToHtml(state.bookmarks, state.collections);
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bookmarks-${new Date().toISOString().split('T')[0]}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast(t('exported'));
+    } catch {
+      showToast(t('exportFailed'));
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+  }, [state.bookmarks, state.collections, showToast, t]);
 
   const handleImportJson = useCallback(() => {
     const input = document.createElement('input');
@@ -660,14 +753,115 @@ function App() {
           }
           showToast(t('imported'));
         } else {
-          showToast('Invalid JSON format');
+          showToast(t('invalidJson'));
         }
       } catch {
-        showToast('Failed to read JSON file');
+        showToast(t('jsonReadFailed'));
       }
     };
     input.click();
   }, [send, showToast, t]);
+
+  const handleImportHtml = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.html,.htm';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = parseNetscapeBookmarksHtml(text);
+        if (parsed.bookmarks.length === 0) {
+          showToast(t('invalidHtml'));
+          return;
+        }
+        await send({ type: 'BM:importData', payload: parsed });
+        showToast(`${t('imported')}: ${parsed.bookmarks.length} ${t('bookmarksLabel')}`);
+      } catch {
+        showToast(t('invalidHtml'));
+      }
+    };
+    input.click();
+  }, [send, showToast, t]);
+
+  const handleRefreshPreviews = useCallback(async () => {
+    showToast('…');
+    await send({ type: 'BM:refreshPreviews' });
+    showToast(t('previewsDone'));
+  }, [send, showToast, t]);
+
+  const handleCheckBroken = useCallback(async () => {
+    showToast('…');
+    await send({ type: 'BM:checkBrokenLinks' });
+    showToast(t('brokenCheckDone'));
+  }, [send, showToast, t]);
+
+  const handleEmptyOldTrash = useCallback(async () => {
+    await send({ type: 'BM:emptyOldTrash' });
+    showToast(t('trashCleaned'));
+  }, [send, showToast, t]);
+
+  const handleEmptyTrash = useCallback(() => {
+    setConfirmDialog({
+      title: t('emptyTrash'),
+      message: t('confirmEmptyTrash'),
+      confirmLabel: t('emptyTrash'),
+      variant: 'danger',
+      onConfirm: async () => {
+        await send({ type: 'BM:emptyTrash' });
+        setSelectedIds(new Set());
+        showToast(t('trashEmptied'));
+      },
+    });
+  }, [send, showToast, t]);
+
+  const handleSaveAllTabs = useCallback(async () => {
+    const tabs = (await chrome.tabs?.query({ currentWindow: true })) ?? [];
+    const saveableCount = tabs.filter(
+      (tab) => tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))
+    ).length;
+
+    if (saveableCount === 0) {
+      showToast(t('noTabsToSave'));
+      return;
+    }
+
+    const now = new Date();
+    const label = `${t('sessionPrefix')} ${now.toLocaleDateString(
+      state.settings.locale === 'vi' ? 'vi-VN' : 'en-US',
+      { month: 'short', day: 'numeric' }
+    )} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    setConfirmDialog({
+      title: t('saveAllTabs'),
+      message: t('confirmSaveAllTabs', { n: String(saveableCount), name: label }),
+      confirmLabel: t('saveAllTabs'),
+      variant: 'primary',
+      onConfirm: async () => {
+        const res = await send({ type: 'BM:saveAllTabs', payload: { collectionName: label } });
+        const count = Number(res.savedCount ?? 0);
+        if (count > 0) {
+          showToast(t('savedTabs', { n: String(count) }));
+          if (typeof res.collectionId === 'string' && res.collectionId && !showQuickSave) {
+            setActiveCollection(res.collectionId);
+          }
+        } else {
+          showToast(t('noTabsToSave'));
+        }
+      },
+    });
+  }, [send, showToast, showQuickSave, state.settings.locale, t]);
+
+  const handleCycleTheme = useCallback(async () => {
+    const order: ThemeMode[] = ['light', 'dark', 'system'];
+    const idx = order.indexOf(state.settings.theme);
+    const next = order[(idx + 1) % order.length];
+    await send({ type: 'BM:updateSettings', payload: { theme: next } });
+    const modeLabel =
+      next === 'dark' ? t('themeDark') : next === 'light' ? t('themeLight') : t('themeSystem');
+    showToast(t('switchTheme', { mode: modeLabel }));
+  }, [state.settings.theme, send, showToast, t]);
 
   const handleTogglePin = useCallback(
     async (id: string) => {
@@ -680,12 +874,23 @@ function App() {
     setModal({ type: 'add', initial: bookmark });
   }, []);
 
+  const handleCopyUrlToast = useCallback(() => {
+    showToast(t('urlCopied'));
+  }, [showToast, t]);
+
   const handleDeleteBookmark = useCallback(
     async (id: string, isFromTrash: boolean) => {
       if (isFromTrash) {
-        if (!confirm(t('confirmDelete'))) return;
-        await send({ type: 'BM:deleteBookmark', id });
-        showToast(t('permanentlyDeleted'));
+        setConfirmDialog({
+          title: t('deletePermanently'),
+          message: t('confirmDelete'),
+          confirmLabel: t('deletePermanently'),
+          variant: 'danger',
+          onConfirm: async () => {
+            await send({ type: 'BM:deleteBookmark', id });
+            showToast(t('permanentlyDeleted'));
+          },
+        });
       } else {
         const bookmark = state.bookmarks.find((b) => b.id === id);
         await send({ type: 'BM:moveToTrash', id });
@@ -716,42 +921,51 @@ function App() {
 
   const handleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
-      // Compare by membership, not size — a stale selection of equal size (containing
-      // now-hidden ids after a filter change) shouldn't read as "all selected".
       const allSelected =
         filteredBookmarks.length > 0 && filteredBookmarks.every((b) => prev.has(b.id));
       return allSelected ? new Set() : new Set(filteredBookmarks.map((b) => b.id));
     });
   }, [filteredBookmarks]);
 
-  const handleToggleSelect = useCallback((id: string, selected: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (selected) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
+  const handleToggleSelect = useCallback(
+    (id: string, selected: boolean, shiftKey = false) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (shiftKey && lastSelectedIdRef.current) {
+          const a = filteredBookmarks.findIndex((b) => b.id === lastSelectedIdRef.current);
+          const b = filteredBookmarks.findIndex((b) => b.id === id);
+          if (a !== -1 && b !== -1) {
+            const [start, end] = a < b ? [a, b] : [b, a];
+            for (let i = start; i <= end; i++) {
+              if (selected) next.add(filteredBookmarks[i].id);
+              else next.delete(filteredBookmarks[i].id);
+            }
+            lastSelectedIdRef.current = id;
+            return next;
+          }
+        }
+        if (selected) next.add(id);
+        else next.delete(id);
+        lastSelectedIdRef.current = id;
+        return next;
+      });
+    },
+    [filteredBookmarks]
+  );
 
   const handleReorder = useCallback(
     async (dragId: string, dropId: string, position: 'before' | 'after' = 'before') => {
-      // Reorder within the currently VISIBLE list — the drag/drop ids come from there.
-      // Rewriting `order` against the raw state.bookmarks array (which includes trash and
-      // other collections) would drop items at the wrong position whenever a filter, search
-      // or non-default sort is active.
       const visible = filteredBookmarks;
       const dragIndex = visible.findIndex((b) => b.id === dragId);
       if (dragIndex === -1 || !visible.some((b) => b.id === dropId)) return;
 
       const reorderedVisible = [...visible];
       const [removed] = reorderedVisible.splice(dragIndex, 1);
-      // Insert relative to the drop target, honoring which half of the row was dropped on.
       let target = reorderedVisible.findIndex((b) => b.id === dropId);
       if (target === -1) return;
       if (position === 'after') target += 1;
       reorderedVisible.splice(target, 0, removed);
 
-      // Assign sequential order only to the visible subset; leave off-screen bookmarks as-is.
       const orderMap = new Map<string, number>();
       reorderedVisible.forEach((b, i) => orderMap.set(b.id, i));
       const nextBookmarks = state.bookmarks.map((b) =>
@@ -763,14 +977,24 @@ function App() {
   );
 
   const handleBulkDelete = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
     if (activeCollection === COLLECTION.TRASH) {
-      if (confirm(t('confirmBulkDelete'))) {
-        await send({ type: 'BM:bulkDelete', ids: Array.from(selectedIds) });
-        setSelectedIds(new Set());
-      }
+      setConfirmDialog({
+        title: t('deletePermanently'),
+        message: t('confirmBulkDelete'),
+        confirmLabel: t('deletePermanently'),
+        variant: 'danger',
+        onConfirm: async () => {
+          await send({ type: 'BM:bulkDelete', ids });
+          setSelectedIds(new Set());
+          showToast(t('permanentlyDeleted'));
+        },
+      });
     } else {
       const bookmarksToRestore = state.bookmarks.filter((b) => selectedIds.has(b.id));
-      await send({ type: 'BM:bulkMoveToTrash', ids: Array.from(selectedIds) });
+      await send({ type: 'BM:bulkMoveToTrash', ids });
       setSelectedIds(new Set());
       showToast(
         `${bookmarksToRestore.length} ${t('movedToTrash')}`,
@@ -789,6 +1013,53 @@ function App() {
     }
   }, [activeCollection, selectedIds, state.bookmarks, send, showToast, t]);
 
+  const handleBulkRestore = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    await send({ type: 'BM:bulkRestore', ids });
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    showToast(t('restored'));
+  }, [selectedIds, send, showToast, t]);
+
+  const openUrlsInTabs = useCallback(
+    (urls: string[]) => {
+      const run = () => {
+        for (const url of urls) {
+          if (chrome?.tabs?.create) {
+            void chrome.tabs.create({ url, active: false });
+          } else {
+            window.open(url, '_blank', 'noopener,noreferrer');
+          }
+        }
+      };
+      if (urls.length > 10) {
+        setConfirmDialog({
+          title: t('openAll'),
+          message: t('confirmOpenManyTabs', { n: String(urls.length) }),
+          confirmLabel: t('openAll'),
+          variant: 'primary',
+          onConfirm: run,
+        });
+      } else {
+        run();
+      }
+    },
+    [t]
+  );
+
+  const handleBulkOpenTabs = useCallback(() => {
+    const urls = filteredBookmarks
+      .filter((b) => selectedIds.has(b.id))
+      .map((b) => b.url);
+    if (urls.length > 0) openUrlsInTabs(urls);
+  }, [filteredBookmarks, selectedIds, openUrlsInTabs]);
+
+  const handleOpenAllInView = useCallback(() => {
+    const urls = filteredBookmarks.map((b) => b.url);
+    if (urls.length > 0) openUrlsInTabs(urls);
+  }, [filteredBookmarks, openUrlsInTabs]);
+
   const handleBulkMove = useCallback(
     async (collectionId: string) => {
       await send({
@@ -797,20 +1068,23 @@ function App() {
       });
       setSelectedIds(new Set());
       setIsSelectMode(false);
-      showToast('Moved');
+      showToast(t('moved'));
     },
-    [selectedIds, send, showToast]
+    [selectedIds, send, showToast, t]
   );
 
   const handleBulkTag = useCallback(
-    async (tags: string[]) => {
+    async (tags: string[], mode: 'add' | 'remove' = 'add') => {
       await send({
         type: 'BM:bulkTag',
-        payload: { ids: Array.from(selectedIds), add: tags },
+        payload: {
+          ids: Array.from(selectedIds),
+          ...(mode === 'add' ? { add: tags } : { remove: tags }),
+        },
       });
-      showToast('Tags added');
+      showToast(mode === 'add' ? t('tagsAdded') : t('tagsRemoved'));
     },
-    [selectedIds, send, showToast]
+    [selectedIds, send, showToast, t]
   );
 
   const handleBulkPin = useCallback(
@@ -824,6 +1098,32 @@ function App() {
     [selectedIds, send, showToast, t]
   );
 
+  const handleRenameTag = useCallback(
+    async (oldTag: string, newTag: string) => {
+      await send({ type: 'BM:renameTag', payload: { oldTag, newTag } });
+      setActiveTags((prev) => prev.map((x) => (x === oldTag ? newTag.toLowerCase() : x)));
+      showToast(t('tagRenamed'));
+    },
+    [send, showToast, t]
+  );
+
+  const handleDeleteTag = useCallback(
+    (tag: string) => {
+      setConfirmDialog({
+        title: t('deleteTag'),
+        message: t('confirmDeleteTag', { tag }),
+        confirmLabel: t('delete'),
+        variant: 'danger',
+        onConfirm: async () => {
+          await send({ type: 'BM:deleteTag', tag });
+          setActiveTags((prev) => prev.filter((x) => x !== tag));
+          showToast(t('tagDeleted'));
+        },
+      });
+    },
+    [send, showToast, t]
+  );
+
   useEffect(() => {
     setSelectedIds(new Set());
     setIsSelectMode(false);
@@ -832,16 +1132,21 @@ function App() {
   const handleCancelSelectMode = useCallback(() => {
     setIsSelectMode(false);
     setSelectedIds(new Set());
+    lastSelectedIdRef.current = null;
   }, []);
 
-  const handleSelectCollection = useCallback((id: string) => {
-    startTransition(() => {
-      setActiveCollection(id);
-      setActiveTags([]);
-      setSelectedIds(new Set());
-      setIsSelectMode(false);
-    });
-  }, []);
+  const handleSelectCollection = useCallback(
+    (id: string) => {
+      startTransition(() => {
+        setActiveCollection(id);
+        setActiveTags([]);
+        setSelectedIds(new Set());
+        setIsSelectMode(false);
+      });
+      if (isNarrowViewport) setSidebarOpen(false);
+    },
+    [isNarrowViewport]
+  );
 
   const handleToggleTag = useCallback((tag: string) => {
     setActiveTags((prev) =>
@@ -862,15 +1167,125 @@ function App() {
   );
 
   const handleUpdateSettings = async (patch: Partial<AppSettings>) => {
+    const prevView = state.settings.defaultViewMode;
     await send({ type: 'BM:updateSettings', payload: patch });
+    if (patch.defaultViewMode && patch.defaultViewMode !== prevView) {
+      handleViewModeChange(patch.defaultViewMode);
+    }
     showToast(t('settings'));
   };
 
+  const openAddModal = useCallback(
+    (overrideCollectionId?: string) => {
+      const targetCol =
+        overrideCollectionId ??
+        (activeCollection !== COLLECTION.ALL &&
+        activeCollection !== COLLECTION.TRASH &&
+        !isSmartCollection(activeCollection)
+          ? activeCollection
+          : state.settings.defaultCollectionId || COLLECTION.UNSORTED);
+      setModal({ type: 'add', initial: { collectionId: targetCol } });
+    },
+    [activeCollection, state.settings.defaultCollectionId]
+  );
+
+  // ─── Global Keyboard Navigation & Command Palette ──────────────────────────
+  useEffect(() => {
+    if (showQuickSave || !isLoaded) return;
+
+    const handler = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + K opens Command Palette even inside inputs
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowCommandPalette((v) => !v);
+        return;
+      }
+
+      // Skip shortcuts when a dialog/modal is open or focus is in an editable element
+      if (showCommandPalette || showPrefs || modal.type !== 'none' || confirmDialog) return;
+
+      const target = e.target as HTMLElement | null;
+      const isEditable =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable;
+      if (isEditable || e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === 'n') {
+        e.preventDefault();
+        openAddModal();
+        return;
+      }
+
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        if (filteredBookmarks.length === 0) return;
+        e.preventDefault();
+        setFocusedIndex((idx) => Math.min(filteredBookmarks.length - 1, idx + 1));
+        return;
+      }
+
+      if (e.key === 'k' || e.key === 'ArrowUp') {
+        if (filteredBookmarks.length === 0) return;
+        e.preventDefault();
+        setFocusedIndex((idx) => (idx <= 0 ? 0 : idx - 1));
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        if (isSelectMode) {
+          handleCancelSelectMode();
+        } else if (focusedIndex !== -1) {
+          setFocusedIndex(-1);
+        }
+        return;
+      }
+
+      const focused = focusedIndex >= 0 ? filteredBookmarks[focusedIndex] : undefined;
+      if (!focused) return;
+
+      if (e.key === 'Enter' && target?.tagName !== 'BUTTON' && target?.tagName !== 'A') {
+        e.preventDefault();
+        window.open(focused.url, '_blank', 'noopener,noreferrer');
+      } else if (e.key === 'e' && activeCollection !== COLLECTION.TRASH) {
+        e.preventDefault();
+        handleEditBookmark(focused);
+      } else if (e.key === 'p' && activeCollection !== COLLECTION.TRASH) {
+        e.preventDefault();
+        void handleTogglePin(focused.id);
+      } else if (e.key === 'c') {
+        e.preventDefault();
+        void navigator.clipboard.writeText(focused.url).then(() => showToast(t('urlCopied')));
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        void handleDeleteBookmark(focused.id, activeCollection === COLLECTION.TRASH);
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [
+    showQuickSave,
+    isLoaded,
+    showCommandPalette,
+    showPrefs,
+    modal.type,
+    confirmDialog,
+    filteredBookmarks,
+    focusedIndex,
+    isSelectMode,
+    activeCollection,
+    openAddModal,
+    handleCancelSelectMode,
+    handleEditBookmark,
+    handleTogglePin,
+    handleDeleteBookmark,
+    showToast,
+    t,
+  ]);
+
+  // ─── Loading Skeleton ───────────────────────────────────────────────────────
   if (!isLoaded) {
-    // A Chrome popup is sized from its content when it opens. The default
-    // popup ends up as QuickSave (380px wide), so paint a matching skeleton
-    // first. Painting the 800×600 dashboard skeleton here opens the popup too
-    // wide, leaving a gray gutter on one side.
     if (!isDashboard && !forceLibrary) {
       return <QuickSaveSkeleton />;
     }
@@ -891,6 +1306,7 @@ function App() {
     );
   }
 
+  // ─── Quick Save Popup ───────────────────────────────────────────────────────
   if (showQuickSave) {
     return (
       <>
@@ -900,6 +1316,10 @@ function App() {
           settings={state.settings}
           allTags={allTags}
           onSave={handleSaveBookmark}
+          onRemove={async (id) => {
+            await send({ type: 'BM:moveToTrash', id });
+            showToast(t('movedToTrash'));
+          }}
           onOpenLibrary={() => setForceLibrary(true)}
           onOpenDashboard={handleOpenDashboard}
           onOpenPreferences={() => {
@@ -916,6 +1336,7 @@ function App() {
             <SettingsModal
               settings={state.settings}
               collections={state.collections}
+              stats={libraryStats}
               onSave={handleUpdateSettings}
               onClose={() => {
                 setShowPrefs(false);
@@ -923,6 +1344,12 @@ function App() {
               }}
               onCheckBroken={handleCheckBroken}
               onEmptyOldTrash={handleEmptyOldTrash}
+              onRefreshPreviews={handleRefreshPreviews}
+              onImportJson={handleImportJson}
+              onImportHtml={handleImportHtml}
+              onImportBrowser={handleImport}
+              onExport={handleExportData}
+              onExportHtml={handleExportHtml}
               onGDriveStateChange={() => {
                 void send({ type: 'BM:getState' });
                 refreshGDriveStatus();
@@ -932,13 +1359,21 @@ function App() {
             />
           </Suspense>
         )}
+        {confirmDialog && (
+          <ConfirmDialog
+            dialog={confirmDialog}
+            locale={state.settings.locale}
+            onClose={() => setConfirmDialog(null)}
+          />
+        )}
         <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 items-end pointer-events-none">
           {toasts.map((toastItem) => (
             <div
               key={toastItem.id}
-              className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 animate-slide-up"
+              className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-3.5 py-2 rounded-lg shadow-pop text-[13px] font-medium flex items-center gap-2 animate-slide-up"
               role="status"
             >
+              <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
               {toastItem.msg}
             </div>
           ))}
@@ -947,41 +1382,67 @@ function App() {
     );
   }
 
+  // ─── Full Dashboard / Library ───────────────────────────────────────────────
+  const showCollectionBadge =
+    activeCollection === COLLECTION.ALL ||
+    isSmartCollection(activeCollection) ||
+    Boolean(debouncedSearchQuery.trim());
+
+  const sidebarNode = (
+    <Sidebar
+      collections={state.collections}
+      activeCollection={activeCollection}
+      onSelectCollection={handleSelectCollection}
+      bookmarkCounts={bookmarkCounts}
+      tagCounts={tagCounts}
+      onNewCollection={() => setModal({ type: 'collection' })}
+      onImport={handleImport}
+      onImportJson={handleImportJson}
+      onExport={handleExportData}
+      onOpenPreferences={() => {
+        setPrefsFocusGDrive(false);
+        setShowPrefs(true);
+      }}
+      onOpenGDrive={openGDriveSettings}
+      onSyncGDrive={() => void handleSyncGDrive()}
+      gdrive={gdriveUi}
+      activeTags={activeTags}
+      availableTags={availableTags}
+      onToggleTag={handleToggleTag}
+      onRenameTag={handleRenameTag}
+      onDeleteTag={handleDeleteTag}
+      onOpenDashboard={!isDashboard ? handleOpenDashboard : undefined}
+      onOpenSidePanel={!isDashboard ? handleOpenSidePanel : undefined}
+      onEditCollection={handleEditCollectionById}
+      onTogglePinCollection={handleTogglePinCollection}
+      onDropBookmark={handleDropBookmark}
+      onDropCollection={handleDropCollection}
+      theme={state.settings.theme}
+      onCycleTheme={() => void handleCycleTheme()}
+      locale={state.settings.locale}
+    />
+  );
+
   return (
     <div
-      className={`flex bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden font-sans ${
+      className={`flex bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden font-sans relative ${
         isDashboard ? 'h-screen w-full' : 'w-[800px] h-[600px]'
       }`}
     >
-      <Sidebar
-        collections={state.collections}
-        activeCollection={activeCollection}
-        onSelectCollection={handleSelectCollection}
-        bookmarkCounts={bookmarkCounts}
-        onNewCollection={() => setModal({ type: 'collection' })}
-        onImport={handleImport}
-        onImportJson={handleImportJson}
-        onExport={handleExportData}
-        onRefreshPreviews={handleRefreshPreviews}
-        onCheckBroken={handleCheckBroken}
-        onOpenPreferences={() => {
-          setPrefsFocusGDrive(false);
-          setShowPrefs(true);
-        }}
-        onOpenGDrive={openGDriveSettings}
-        onSyncGDrive={() => void handleSyncGDrive()}
-        gdrive={gdriveUi}
-        activeTags={activeTags}
-        availableTags={availableTags}
-        onToggleTag={handleToggleTag}
-        onOpenDashboard={!isDashboard ? handleOpenDashboard : undefined}
-        onOpenSidePanel={!isDashboard ? handleOpenSidePanel : undefined}
-        onEditCollection={handleEditCollectionById}
-        onTogglePinCollection={handleTogglePinCollection}
-        onDropBookmark={handleDropBookmark}
-        onDropCollection={handleDropCollection}
-        locale={state.settings.locale}
-      />
+      {/* Desktop / Wide Sidebar */}
+      {!isNarrowViewport && sidebarOpen && sidebarNode}
+
+      {/* Narrow Viewport / Chrome Side Panel Overlay Drawer */}
+      {isNarrowViewport && sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 flex bg-zinc-900/40 dark:bg-black/60 backdrop-blur-[1px]"
+          onClick={() => setSidebarOpen(false)}
+        >
+          <div className="h-full shadow-pop" onClick={(e) => e.stopPropagation()}>
+            {sidebarNode}
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900">
         <SearchBar
@@ -995,7 +1456,8 @@ function App() {
             viewMode === 'folder' ? handleCollectionColumnsChange : handleBookmarkColumnsChange
           }
           allowFolderView={activeCollection === COLLECTION.ALL && isDashboard}
-          onAdd={() => setModal({ type: 'add' })}
+          onAdd={() => openAddModal()}
+          onOpenCommandPalette={() => setShowCommandPalette(true)}
           currentTabBookmarked={!!currentTabBookmark}
           onEditCurrent={
             currentTabBookmark ? () => handleEditBookmark(currentTabBookmark) : undefined
@@ -1007,6 +1469,8 @@ function App() {
           }
           onSelectAll={handleSelectAll}
           onBulkDelete={handleBulkDelete}
+          onBulkRestore={handleBulkRestore}
+          onBulkOpenTabs={handleBulkOpenTabs}
           onBulkMove={handleBulkMove}
           onBulkTag={handleBulkTag}
           onBulkPin={handleBulkPin}
@@ -1025,6 +1489,21 @@ function App() {
           }}
           locale={state.settings.locale}
         />
+
+        <CollectionHeader
+          activeCollection={activeCollection}
+          collections={state.collections}
+          itemCount={filteredBookmarks.length}
+          locale={state.settings.locale}
+          sidebarCollapsed={!sidebarOpen}
+          onToggleSidebar={toggleSidebar}
+          onSelectCollection={handleSelectCollection}
+          onEmptyTrash={handleEmptyTrash}
+          onOpenAll={handleOpenAllInView}
+          onCheckBroken={() => void handleCheckBroken()}
+          onRefreshPreviews={() => void handleRefreshPreviews()}
+        />
+
         <div
           className={`flex-1 overflow-hidden relative transition-opacity duration-150 ${
             isPending ? 'opacity-60 pointer-events-none' : 'opacity-100'
@@ -1036,9 +1515,14 @@ function App() {
               bookmarks={filteredBookmarks}
               viewMode="list"
               collectionColumns={collectionColumns}
+              relatedRoots={relatedRootsMap}
+              onSelectCollection={handleSelectCollection}
+              onAddInCollection={(colId) => openAddModal(colId)}
+              onDropBookmark={handleDropBookmark}
               onEdit={handleEditBookmark}
               onDelete={handleDeleteBookmark}
               onRestore={handleRestoreBookmark}
+              onCopyUrl={handleCopyUrlToast}
               onTogglePin={handleTogglePin}
               onToggleSelect={handleToggleSelect}
               onTagClick={handleTagClick}
@@ -1047,13 +1531,19 @@ function App() {
               onNewCollection={() => setModal({ type: 'collection' })}
               onReorder={handleReorder}
               isDashboard={isDashboard}
+              locale={state.settings.locale}
             />
           ) : (
             <BookmarkList
               bookmarks={filteredBookmarks}
+              collections={state.collections}
+              showCollectionBadge={showCollectionBadge}
+              onCollectionClick={handleSelectCollection}
               viewMode={viewMode === 'folder' ? 'grid' : viewMode}
               bookmarkColumns={bookmarkColumns}
+              relatedRoots={relatedRootsMap}
               searchQuery={searchQuery}
+              highlightQuery={parsedSearch.text}
               activeTags={activeTags}
               activeCollection={activeCollection}
               onClearSearch={() => setSearchQuery('')}
@@ -1061,18 +1551,21 @@ function App() {
                 setSearchQuery('');
                 setActiveTags([]);
               }}
-              onAdd={() => setModal({ type: 'add' })}
+              onAdd={() => openAddModal()}
               onEdit={handleEditBookmark}
               onDelete={handleDeleteBookmark}
               onRestore={handleRestoreBookmark}
+              onCopyUrl={handleCopyUrlToast}
               isTrashView={activeCollection === COLLECTION.TRASH}
               onTogglePin={handleTogglePin}
               selectedIds={selectedIds}
+              focusedIndex={focusedIndex}
               onToggleSelect={handleToggleSelect}
               isSelectMode={isSelectMode}
               onTagClick={handleTagClick}
               onReorder={handleReorder}
               isDashboard={isDashboard}
+              locale={state.settings.locale}
             />
           )}
         </div>
@@ -1088,6 +1581,7 @@ function App() {
             onSave={handleSaveBookmark}
             onQuickAddCollection={handleQuickAddCollection}
             onClose={() => setModal({ type: 'none' })}
+            locale={state.settings.locale}
           />
         )}
 
@@ -1096,15 +1590,22 @@ function App() {
             existing={modal.existing}
             collections={state.collections}
             onSave={handleSaveCollection}
-            onDelete={async (id: string) => {
-              if (confirm(t('confirmDeleteCollection'))) {
-                await send({ type: 'BM:deleteCollection', id });
-                showToast(t('collectionDeleted'));
-                if (activeCollection === id) setActiveCollection(COLLECTION.ALL);
-                setModal({ type: 'none' });
-              }
+            onDelete={(id: string) => {
+              setConfirmDialog({
+                title: t('delete'),
+                message: t('confirmDeleteCollection'),
+                confirmLabel: t('delete'),
+                variant: 'danger',
+                onConfirm: async () => {
+                  await send({ type: 'BM:deleteCollection', id });
+                  showToast(t('collectionDeleted'));
+                  if (activeCollection === id) setActiveCollection(COLLECTION.ALL);
+                  setModal({ type: 'none' });
+                },
+              });
             }}
             onClose={() => setModal({ type: 'none' })}
+            locale={state.settings.locale}
           />
         )}
 
@@ -1112,12 +1613,12 @@ function App() {
           <SettingsModal
             settings={state.settings}
             collections={state.collections}
+            stats={libraryStats}
             onSave={handleUpdateSettings}
             onClose={() => {
               setShowPrefs(false);
               setAutoGdriveConnect(false);
               setPrefsFocusGDrive(false);
-              // Clean deep-link query so refresh doesn't re-trigger connect
               if (params.get('gdrive') === 'connect') {
                 const url = new URL(window.location.href);
                 url.searchParams.delete('gdrive');
@@ -1126,6 +1627,12 @@ function App() {
             }}
             onCheckBroken={handleCheckBroken}
             onEmptyOldTrash={handleEmptyOldTrash}
+            onRefreshPreviews={handleRefreshPreviews}
+            onImportJson={handleImportJson}
+            onImportHtml={handleImportHtml}
+            onImportBrowser={handleImport}
+            onExport={handleExportData}
+            onExportHtml={handleExportHtml}
             onGDriveStateChange={() => {
               void send({ type: 'BM:getState' });
               refreshGDriveStatus();
@@ -1134,19 +1641,52 @@ function App() {
             autoConnectGDrive={autoGdriveConnect || prefsFocusGDrive}
           />
         )}
+
+        {showCommandPalette && (
+          <CommandPalette
+            bookmarks={state.bookmarks}
+            collections={state.collections}
+            locale={state.settings.locale}
+            theme={state.settings.theme}
+            allowFolderView={activeCollection === COLLECTION.ALL && isDashboard}
+            onClose={() => setShowCommandPalette(false)}
+            onSelectCollection={handleSelectCollection}
+            onAddBookmark={() => openAddModal()}
+            onNewCollection={() => setModal({ type: 'collection' })}
+            onSaveAllTabs={() => void handleSaveAllTabs()}
+            onOpenSettings={() => {
+              setPrefsFocusGDrive(false);
+              setShowPrefs(true);
+            }}
+            onSyncGDrive={() => void handleSyncGDrive()}
+            onCycleTheme={() => void handleCycleTheme()}
+            onChangeView={handleViewModeChange}
+            onCheckBroken={() => void handleCheckBroken()}
+            onRefreshPreviews={() => void handleRefreshPreviews()}
+          />
+        )}
       </Suspense>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          dialog={confirmDialog}
+          locale={state.settings.locale}
+          onClose={() => setConfirmDialog(null)}
+        />
+      )}
 
       <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 items-end pointer-events-none">
         {toasts.map((toastItem) => (
           <div
             key={toastItem.id}
-            className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 animate-slide-up"
+            className="pointer-events-auto bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-700 px-4 py-2.5 rounded-xl shadow-pop text-[13px] font-medium flex items-center gap-2 animate-slide-up"
             role="status"
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-            {toastItem.msg}
+            <div className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0" />
+            <span>{toastItem.msg}</span>
             {toastItem.action && (
               <button
+                type="button"
                 onClick={async () => {
                   const action = toastItem.action;
                   if (!action) return;

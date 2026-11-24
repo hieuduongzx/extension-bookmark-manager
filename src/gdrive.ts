@@ -719,11 +719,25 @@ export function mergeSyncData(
 
   // Collapse duplicate URLs (different ids) using the same canonical key the app uses,
   // merging fields so tags/notes/covers survive rather than being silently dropped.
+  // The dropped id gets a tombstone so a third device still holding it deletes it
+  // on next sync instead of re-contributing the duplicate every round.
   const byUrl = new Map<string, Bookmark>();
+  const droppedDuplicateIds: string[] = [];
   for (const b of bmMap.values()) {
     const key = canonicalizeUrlForMatch(b.url);
     const existing = byUrl.get(key);
-    byUrl.set(key, existing ? mergeDuplicateBookmarks(existing, b) : b);
+    if (!existing) {
+      byUrl.set(key, b);
+      continue;
+    }
+    const merged = mergeDuplicateBookmarks(existing, b);
+    const dropped = merged.id === existing.id ? b : existing;
+    byUrl.set(key, merged);
+    droppedDuplicateIds.push(dropped.id);
+  }
+  const now = Date.now();
+  for (const id of droppedDuplicateIds) {
+    bookmarkTombstones[id] = Math.max(bookmarkTombstones[id] ?? 0, now);
   }
 
   return {

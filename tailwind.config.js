@@ -7,11 +7,13 @@ export default {
   theme: {
     extend: {
       fontFamily: {
+        // Local system stack only — no remote font requests (CWS-friendly).
         sans: [
-          "Space Grotesk",
           "Segoe UI",
           "system-ui",
           "-apple-system",
+          "Helvetica Neue",
+          "Arial",
           "sans-serif",
         ],
       },
